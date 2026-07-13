@@ -1,16 +1,13 @@
 ```text
-      ___    ____   _____           __                     __          __  
-     /   |  /  _/  / ___/__  ______/ /____  ____ ___  ____/ /   ____ _/ /_ 
-    / /| |  / /    \__ \/ / / / __  / ___/ / __ `__ \/ __  /   / __ `/ __ \
-   / ___ |_/ /    ___/ / /_/ / /_/ (__  ) / / / / / / /_/ /   / /_/ / /_/ /
-  /_/  |_/___/   /____/\__, /\__,_/____/ /_/ /_/ /_/\__,_/    \__,_/_.___/ 
-                      /____/                                                
-
-        [ edge ai ] -- [ linux ] -- [ vision ] -- [ tensors ] -- [ local llm ]
-             |             |            |             |              |
-          python        docker        opencv        pytorch       gguf/llama.cpp
-             |             |            |             |              |
-             +------->  systems lab for AI-assisted engineering  <------+ 
++--------------------------------------------------------------------------+
+|                            AI SYSTEMS LAB                                |
+|                                                                          |
+|   edge ai  ->  linux  ->  vision  ->  tensors  ->  local llm             |
+|      |           |          |           |              |                 |
+|   python      docker     opencv      pytorch      gguf / llama.cpp       |
+|                                                                          |
+|        systems lab for AI-assisted engineering and edge workflows         |
++--------------------------------------------------------------------------+
 ```
 
 # AI Systems Lab
