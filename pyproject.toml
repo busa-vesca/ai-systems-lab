@@ -1,0 +1,9 @@
+[tool.pytest.ini_options]
+pythonpath = [
+  "04-fastapi-inference/vision-inference-api/src",
+  "02-pytorch-training-loop/pytorch-training-loop-lab/src",
+  "06-jetson-edge-vision/jetson-edge-vision-service/src"
+]
+testpaths = [
+  "04-fastapi-inference/vision-inference-api/tests"
+]
