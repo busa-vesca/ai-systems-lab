@@ -32,6 +32,19 @@ The goal is to build a practical engineering foundation for reading code, valida
 - Local LLM runtime experiments
 - Networking and Linux security lab notes
 
+## Milestone Map
+
+```text
+01-python-engineering       -> code structure, typing, logging, CLI, tests
+02-pytorch-training-loop    -> Dataset, DataLoader, loss, optimizer, checkpoints
+03-opencv-yolo              -> camera frames, preprocessing, detection, metrics
+04-fastapi-inference        -> /health, /predict, Pydantic, model service
+05-docker-linux-deployment  -> Dockerfile, compose, systemd, logs, monitoring
+06-jetson-edge-vision       -> Jetson camera + CUDA + FPS + edge constraints
+07-local-llm-runtime        -> llama.cpp, GGUF, quantization, local serving
+08-ai-systems-architecture  -> perception, state, planning, action, feedback
+```
+
 ## Lab Areas
 
 ### Python Core
