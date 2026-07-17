@@ -11,7 +11,16 @@ def accuracy_from_logits(logits: torch.Tensor, target: torch.Tensor) -> float:
     logits shape: [batch_size, num_classes]
     target shape: [batch_size]
     """
+    correct, total = correct_predictions_from_logits(logits, target)
+    return correct / total
+
+
+def correct_predictions_from_logits(
+    logits: torch.Tensor,
+    target: torch.Tensor,
+) -> tuple[int, int]:
+    """Return the number of correct predictions and total examples."""
     predictions = logits.argmax(dim=1)
     correct = (predictions == target).sum().item()
     total = target.numel()
-    return correct / total
+    return correct, total
