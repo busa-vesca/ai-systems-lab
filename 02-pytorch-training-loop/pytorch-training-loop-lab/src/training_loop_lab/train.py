@@ -9,7 +9,6 @@ from torch import nn
 from torch.utils.data import DataLoader
 
 from training_loop_lab.metrics import correct_predictions_from_logits
-from training_loop_lab.model import TinyClassifier
 
 
 @dataclass(frozen=True)
@@ -22,7 +21,7 @@ class TrainResult:
 
 
 def train_one_epoch(
-    model: TinyClassifier,
+    model: nn.Module,
     loader: DataLoader,
     loss_fn: nn.Module,
     optimizer: torch.optim.Optimizer,
@@ -49,6 +48,9 @@ def train_one_epoch(
         total_correct += correct
         total_examples += total
         num_batches += 1
+
+    if num_batches == 0:
+        raise ValueError("DataLoader produced no batches; cannot train on an empty dataset.")
 
     return TrainResult(
         avg_loss=total_loss / num_batches,
