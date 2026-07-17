@@ -8,7 +8,7 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader
 
-from training_loop_lab.metrics import accuracy_from_logits
+from training_loop_lab.metrics import correct_predictions_from_logits
 from training_loop_lab.model import TinyClassifier
 
 
@@ -31,7 +31,8 @@ def train_one_epoch(
     model.train()
 
     total_loss = 0.0
-    total_accuracy = 0.0
+    total_correct = 0
+    total_examples = 0
     num_batches = 0
 
     for batch_x, batch_target in loader:
@@ -42,12 +43,15 @@ def train_one_epoch(
         loss.backward()
         optimizer.step()
 
+        correct, total = correct_predictions_from_logits(logits, batch_target)
+
         total_loss += loss.item()
-        total_accuracy += accuracy_from_logits(logits, batch_target)
+        total_correct += correct
+        total_examples += total
         num_batches += 1
 
     return TrainResult(
         avg_loss=total_loss / num_batches,
-        accuracy=total_accuracy / num_batches,
+        accuracy=total_correct / total_examples,
         num_batches=num_batches,
     )
