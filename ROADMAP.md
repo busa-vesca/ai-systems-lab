@@ -8,73 +8,77 @@ Study capacity: approximately 5 focused hours per day, 6 days per week.
 
 ## Operating Principles
 
-1. Build one coherent production system instead of many disconnected tutorials.
-2. Learn each topic immediately inside working code.
-3. Ship visible evidence every week.
-4. Begin CV, LinkedIn and interview preparation before the project is perfect.
-5. Prefer depth in the core stack over shallow exposure to many frameworks.
-6. Treat tests, evals, logging, deployment and documentation as product features.
+1. Learn through working code, not infrastructure rituals.
+2. Add only one major concept at a time.
+3. Do not introduce tooling before it solves a real problem.
+4. Every week must produce code that can be explained without notes.
+5. Begin interview preparation early, but keep the main project focused.
+6. Treat tests, evals, deployment and documentation as later layers built on understood code.
 
 ## Weekly Time Budget
 
 ```text
-2 h  main production project
-1 h  Python/backend fundamentals
-1 h  interview algorithms, SQL or system design
-1 h  cloud, MLOps, documentation or review
+2 h  main project code
+1 h  focused Python/backend concept
+1 h  tests, debugging and refactoring
+1 h  algorithms, SQL or interview review
 ```
 
-## Month 1 — Production Python and Backend
+## Month 1 — Production Python First
 
-### Week 1: Python Engineering
+### Week 1: Incident Tracker in one file
 
-- project structure and virtual environments
-- functions, classes, dataclasses and protocols
-- typing and mypy basics
-- configuration and environment variables
-- exceptions and error boundaries
-- structured logging
-- pytest fundamentals
-- Ruff formatting and linting
+- dataclass
+- Enum
+- type hints
+- object creation
+- methods
+- validation
+- explicit exceptions
+- lists of objects
+- search and update logic
 
-Deliverable: typed Python package with CLI, configuration, logging and tests.
+Deliverable: a readable `incident_tracker.py` that creates, finds and updates incidents.
 
-### Week 2: FastAPI Foundation
+No `pyproject.toml`, package layout, linters, Docker, database or framework setup during the first learning steps.
+
+### Week 2: Functions, modules and tests
+
+- split large logic into small functions
+- separate code into 2–3 modules only after the one-file version is understood
+- imports and `__main__`
+- pytest basics
+- fixtures and parametrization only when useful
+- error cases
+- simple CLI
+
+Deliverable: small multi-file Incident Tracker with meaningful unit tests.
+
+Tooling may be added only at the end of the week: virtual environment, minimal dependency file and Ruff. `mypy` is optional, not a blocker.
+
+### Week 3: FastAPI Foundation
 
 - HTTP and REST fundamentals
-- request/response schemas with Pydantic
-- dependency injection
-- status codes and exception handlers
-- async versus sync execution
-- health and readiness endpoints
+- Pydantic request/response models
+- status codes
+- exception handlers
+- dependency injection at a basic practical level
+- health endpoint
 - API tests
 
-Deliverable: tested FastAPI task/incident service using an in-memory repository abstraction.
+Deliverable: tested FastAPI API using the already understood Incident Tracker logic and an in-memory store.
 
-### Week 3: PostgreSQL Persistence
+### Week 4: PostgreSQL and Docker basics
 
-- relational modeling
 - SQL fundamentals
-- SQLAlchemy 2.x
-- transactions and sessions
-- Alembic migrations
-- indexes and constraints
-- repository/service separation
-
-Deliverable: PostgreSQL-backed service with repeatable migrations and integration tests.
-
-### Week 4: Docker and Production Hardening
-
+- tables, keys and constraints
+- SQLAlchemy 2.x basics
+- migrations with Alembic
+- replace in-memory storage with PostgreSQL
 - Dockerfile and Compose
-- environment-specific configuration
-- non-root container user
-- startup and shutdown lifecycle
-- timeouts and idempotency basics
-- structured logging and request correlation IDs
-- CI checks with GitHub Actions
-- Hugging Face `pipeline()` introduction behind a service interface
+- one small Hugging Face `pipeline()` endpoint only after the backend works
 
-Deliverable: containerized API with PostgreSQL, CI, documentation and a small Transformer-powered endpoint.
+Deliverable: API + PostgreSQL started through Docker Compose, with tests and a small cached Transformer integration.
 
 ## Month 2 — Hugging Face and Enterprise Agents
 
@@ -99,14 +103,14 @@ Deliverable: versioned Hugging Face inference service with tests and benchmarks.
 - permissions and allowlists
 - persistence of runs and tool results
 
-Deliverable: agent with at least four safe, deterministic tools.
+Deliverable: agent with safe deterministic tools.
 
 ### Week 7: Stateful Agent Workflow
 
 - explicit state machines
 - LangGraph fundamentals
 - checkpoints
-- human-in-the-loop approval
+- human approval
 - failure recovery
 - resumable execution
 
@@ -117,9 +121,8 @@ Deliverable: incident-analysis workflow with approval before sensitive actions.
 - authentication basics
 - roles and permissions
 - background jobs and Redis
-- webhooks/events conceptually
 - audit trail
-- prompt injection defenses
+- prompt-injection defenses
 
 Deliverable: multi-user agent API with durable history and auditable decisions.
 
@@ -131,13 +134,13 @@ Start targeted applications and mock interviews during this week.
 
 - versioned datasets
 - deterministic assertions
-- tool-selection and trajectory evaluation
-- hallucination and groundedness checks
-- safety and permission checks
-- latency and token-cost budgets
+- tool-selection evaluation
+- groundedness checks
+- safety checks
+- latency and cost budgets
 - regression reports
 
-Deliverable: automated eval suite that blocks a bad release.
+Deliverable: automated eval suite that detects a bad release.
 
 ### Week 10: AWS Deployment
 
@@ -149,7 +152,7 @@ Deliverable: automated eval suite that blocks a bad release.
 - Secrets Manager
 - CloudWatch
 
-Deliverable: deployed public demo with secrets outside source control.
+Deliverable: deployed demo with secrets outside source control.
 
 ### Week 11: MLOps and Observability
 
@@ -157,7 +160,7 @@ Deliverable: deployed public demo with secrets outside source control.
 - MLflow basics
 - OpenTelemetry traces
 - metrics and alerting
-- model and prompt versioning
+- model/prompt versioning
 - rollback strategy
 
 Deliverable: observable deployment with version metadata and rollback instructions.
@@ -166,9 +169,9 @@ Deliverable: observable deployment with version metadata and rollback instructio
 
 - architecture diagram
 - design trade-offs
-- load and failure scenarios
+- failure and load scenarios
 - polished README
-- short demo video or screenshots
+- demo material
 - STAR stories
 - Python, SQL, backend, AI and system-design review
 
@@ -176,66 +179,14 @@ Deliverable: interview-ready portfolio release.
 
 ## Interview Preparation Track
 
-Run in parallel from Week 1.
+Run in parallel from Week 1, but never replace project coding.
 
-### Algorithms
+Priorities:
 
-Prioritize 35–50 deeply understood problems:
-
-- arrays and hash maps
-- two pointers
-- stack and queue
-- binary search
-- linked-list basics
-- trees and recursion basics
-- BFS/DFS basics
-
-### Python
-
-- data model and mutability
-- iterators and generators
-- decorators
-- context managers
-- exceptions
-- typing
-- async and concurrency basics
-- testing and mocking
-
-### Backend and Data
-
-- HTTP and REST
-- authentication
-- SQL joins and indexes
-- transactions
-- caching
-- queues
-- idempotency
-- rate limiting
-- horizontal scaling
-
-### AI Systems
-
-- tokenization and embeddings
-- Transformer inference
-- RAG
-- agents and tool calling
-- evals
-- prompt injection
-- model choice
-- latency and cost
-- monitoring and drift
-
-## Job-Ready Evidence
-
-Before claiming a skill, be able to show:
-
-- source code
-- tests or evals
-- architecture reasoning
-- measured results
-- failure handling
-- deployment evidence
-- clear documentation
+- arrays, hash maps, two pointers, stack, queue and binary search
+- Python mutability, functions, classes, exceptions, typing and testing
+- HTTP, REST, SQL, transactions and indexes
+- tokenization, embeddings, Transformers, agents and evals
 
 ## Scope Control
 
@@ -243,9 +194,9 @@ Defer until the core portfolio is interview-ready:
 
 - advanced Kubernetes administration
 - distributed model training
-- deep CUDA kernel optimization
+- deep CUDA optimization
 - complex TensorRT pipelines
-- new ESP32 or greenhouse hardware expansion
+- new ESP32 or greenhouse expansion
 - training large language models from scratch
 
-Jetson, OpenCV and edge deployments remain valuable supporting case studies.
+Jetson, OpenCV and edge deployments remain supporting case studies.
