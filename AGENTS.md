@@ -1,46 +1,36 @@
 # AGENTS.md
 
-Working rules for AI-assisted development in this repository.
+## Mission
 
-## Core principle
+Optimize this repository for a Production / Enterprise AI Engineer job search: interviews from Week 8 and employment target in 3–5 months.
 
-AI writes fast. The human owner understands, verifies, tests, and accepts.
+## Source of Truth
 
-```text
-AI writes -> human understands and verifies -> strength
-AI writes -> human blindly accepts        -> weakness
-```
+`README.md`, `ROADMAP.md`, `docs/month-01.md` and Issues #1–#12 must describe the same sequence. If implementation and documentation differ, state the actual implementation and fix the mismatch; never advertise planned folders as existing work.
 
-## Roles
+## Environment
 
-```text
-ChatGPT  -> architecture, levels, roadmap, learning map, acceptance criteria
-Claude   -> terminal pair engineer, local commands, logs, explanation, debugging
-Codex    -> GitHub/repository implementation, diffs, file changes, PR-style work
-Human    -> owner, reviewer, integrator, final decision
-Jetson   -> real edge target for camera/GPU/inference validation
-```
+The owner already uses `lab-pt`, which activates the working Python environment. Do not create, recreate, relocate, symlink or teach virtual environments unless the owner explicitly asks. Never commit environment directories.
 
-## Engineering rules
+## Priority
 
-1. Keep architecture, framework, runtime, OS, hardware, and physical system levels separate.
-2. Do not mix levels without explicitly naming the level.
-3. Prefer small readable changes over large hidden rewrites.
-4. Explain why a change is needed before changing code.
-5. Add tests or runnable checks when possible.
-6. Keep README files updated when behavior or structure changes.
-7. Never hide errors. Show the error, explain the likely cause, and propose a fix.
-8. Keep secrets, tokens, passwords, IPs, and private paths out of public commits.
-9. Prefer practical runnable examples over abstract notes.
-10. Final acceptance belongs to the human owner.
+1. Central project: `projects/enterprise-ai-platform`.
+2. Python backend, PostgreSQL, Docker, Hugging Face, agents, evals, AWS, CI/CD and observability.
+3. Early interview preparation and applications.
+4. Existing PyTorch, OpenCV, Jetson, CUDA, Linux and local-LLM labs as supporting portfolio evidence.
 
-## Required output for meaningful tasks
+Do not turn Edge AI, greenhouse hardware, ESP32, CUDA/TensorRT optimization or Kubernetes administration into the primary track before the interview pipeline is active.
 
-For each implemented task, provide:
+## Engineering Rules
 
-- what changed
-- why it changed
-- how to run it
-- how to verify it
-- known limitations
-- next step
+1. Introduce one major layer per roadmap milestone.
+2. Prefer small readable changes with tests and controlled errors.
+3. Explain data flow and trade-offs, not only commands.
+4. Keep docs accurate after behavior or structure changes.
+5. Keep secrets and private paths out of commits.
+6. Do not delete historical labs merely because they are secondary.
+7. The human owner reviews, understands and accepts all work.
+
+## Task Handoff
+
+For meaningful changes report: what changed, why, how to run, how to verify, limitations and the next roadmap milestone.
