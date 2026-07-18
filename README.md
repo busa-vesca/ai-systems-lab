@@ -1,175 +1,144 @@
-```text
-+--------------------------------------------------------------------------+
-|                            AI SYSTEMS LAB                                |
-|                                                                          |
-|   edge ai  ->  linux  ->  vision  ->  tensors  ->  local llm             |
-|      |           |          |           |              |                 |
-|   python      docker     opencv      pytorch      gguf / llama.cpp       |
-|                                                                          |
-|        systems lab for AI-assisted engineering and edge workflows         |
-+--------------------------------------------------------------------------+
-```
-
 # AI Systems Lab
 
-Personal technical lab for AI-assisted systems development.
+A production-oriented learning and portfolio repository for becoming an **Enterprise AI Engineer**.
 
-This repository documents practical experiments, reusable snippets, and technical notes around edge AI, computer vision, Linux deployment, local AI models, networking, security labs, and automation systems.
+The main goal is to build, deploy, evaluate, monitor, and explain complete AI systems—not isolated notebooks or model demos.
 
-The goal is not to collect random tutorials.
+## Career Target
 
-The goal is to build a practical engineering foundation for reading code, validating AI-generated solutions, debugging real systems, and integrating AI models with cameras, sensors, Linux devices, and automation logic.
+**Production / Enterprise AI Engineer**
 
-## Core Direction
-
-- AI-assisted systems development
-- Edge AI and local inference
-- Computer vision pipelines
-- Linux-based device workflows
-- NVIDIA Jetson / ARM Linux experiments
-- Python code reading, debugging, and verification
-- Automation logic for real-world systems
-- Local LLM runtime experiments
-- Networking and Linux security lab notes
-
-## Milestone Map
+Target capabilities:
 
 ```text
-01-python-engineering       -> code structure, typing, logging, CLI, tests
-02-pytorch-training-loop    -> Dataset, DataLoader, loss, optimizer, checkpoints
-03-opencv-yolo              -> camera frames, preprocessing, detection, metrics
-04-fastapi-inference        -> /health, /predict, Pydantic, model service
-05-docker-linux-deployment  -> Dockerfile, compose, systemd, logs, monitoring
-06-jetson-edge-vision       -> Jetson camera + CUDA + FPS + edge constraints
-07-local-llm-runtime        -> llama.cpp, GGUF, quantization, local serving
-08-ai-systems-architecture  -> perception, state, planning, action, feedback
+Python engineering
+→ backend APIs and databases
+→ Hugging Face / ML inference
+→ AI agents and tool calling
+→ evals and regression testing
+→ Docker and CI/CD
+→ AWS deployment
+→ observability and MLOps
+→ end-to-end production ownership
 ```
 
-## Lab Areas
+Interview target: **begin interviewing after 12 weeks**.
+Job target: **3–5 months**, with approximately 5 focused study hours per day.
 
-### Python Core
+## Primary Stack
 
-Python as a working language for reading, debugging, verifying, and integrating AI-generated code.
+- Python 3.11+
+- FastAPI, Pydantic, SQLAlchemy, Alembic
+- PostgreSQL, Redis
+- Pytest, Ruff, mypy
+- Docker, Docker Compose
+- GitHub Actions
+- AWS: IAM, ECR, ECS/EC2, RDS, S3, CloudWatch, Secrets Manager
+- Hugging Face: Transformers, Datasets, Tokenizers, Hub, PEFT/LoRA basics
+- LLM APIs, structured output, tool calling, LangGraph
+- Evals: deterministic checks, agent trajectory tests, regression suites, latency and cost tracking
+- MLOps/LLMOps: MLflow, OpenTelemetry, Prometheus/Grafana basics, model and prompt versioning
 
-Topics:
+## 12-Week Roadmap
 
-- functions and methods
-- control flow
-- data structures
-- file handling
-- logging
-- debugging
-- code verification
+| Phase | Weeks | Deliverable |
+|---|---:|---|
+| Production Python | 1–2 | Typed package, config, logging, tests and CLI |
+| Backend foundation | 3–4 | FastAPI + PostgreSQL + migrations + Docker |
+| Hugging Face inference | 5 | Transformer model served through a production API |
+| Enterprise agent | 6–8 | Stateful tool-calling workflow with persistence and approval |
+| Evals and reliability | 9 | Regression dataset, quality, safety, latency and cost checks |
+| Cloud and MLOps | 10–11 | AWS deployment, CI/CD, secrets, logs, traces and rollback plan |
+| Interview release | 12 | Public demo, architecture document, polished README and interview stories |
 
-### PyTorch / Tensors
+See [ROADMAP.md](ROADMAP.md) for detailed milestones and [docs/month-01.md](docs/month-01.md) for the first-month execution plan.
 
-Experiments around tensor operations and ML building blocks.
+## Portfolio Projects
 
-Topics:
+### 1. Enterprise Knowledge & Operations Agent
 
-- tensor shapes
-- matrix multiplication
-- batched matmul
-- broadcasting
-- softmax
-- attention mechanics
-- inference basics
+A production AI service that accepts business incidents or document questions, uses controlled tools, persists state, requests human approval for sensitive actions, and produces traceable results.
 
-### OpenCV / Computer Vision
+Required evidence:
 
-Computer vision experiments for real-world monitoring.
+- FastAPI service and OpenAPI contract
+- PostgreSQL persistence and migrations
+- Hugging Face or hosted-model integration
+- LangGraph or explicit state-machine orchestration
+- authentication and permissions basics
+- retries, timeouts, idempotency and failure handling
+- eval dataset and regression tests
+- Docker and GitHub Actions
+- AWS deployment
+- structured logs, metrics and traces
 
-Topics:
+### 2. Production ML Service
 
-- camera input
-- image processing
-- OpenCV pipelines
-- frame capture
-- detection workflows
-- BGR/RGB handling
+A classical ML or small Transformer service demonstrating training/inference separation, experiment tracking, versioned artifacts, deployment, monitoring and drift awareness.
 
-### YOLO / Detection
+### 3. Edge AI Case Study
 
-Object detection experiments and practical inference workflows.
+Existing Jetson, CUDA, OpenCV and real-device work remains as supporting evidence of Linux, hardware integration, networking, debugging and constrained deployment experience.
 
-Topics:
+## Repository Structure
 
-- YOLO inference
-- model input/output flow
-- detection post-processing
-- real-time vision constraints
+```text
+ai-systems-lab/
+├── 01-python-engineering/
+├── 02-backend-foundations/
+├── 03-huggingface-transformers/
+├── 04-agent-systems/
+├── 05-evals/
+├── 06-cloud-aws/
+├── 07-mlops-observability/
+├── projects/
+│   ├── enterprise-ai-agent/
+│   ├── production-ml-service/
+│   └── edge-ai-case-study/
+├── docs/
+│   ├── month-01.md
+│   ├── architecture/
+│   └── interview-notes/
+├── ROADMAP.md
+└── README.md
+```
 
-### ONNX / TensorRT / CUDA
+Directories are created only when they contain working code or documentation. Empty technology folders are avoided.
 
-Deployment-oriented model experiments for edge AI.
+## Definition of Done
 
-Topics:
+A learning milestone is complete only when it includes:
 
-- ONNX export concepts
-- TensorRT deployment awareness
-- CUDA device checks
-- inference optimization
-- edge model runtime constraints
+- working code
+- type hints and clear boundaries
+- tests
+- error handling and structured logging
+- reproducible local setup
+- Docker support where applicable
+- documented design decisions
+- measurable acceptance criteria
+- a clean Git history
 
-### Docker / Linux Edge Deployment
+An AI milestone additionally requires:
 
-Linux and container workflows for edge devices.
+- a versioned evaluation dataset
+- baseline quality metrics
+- latency and cost measurements
+- failure examples
+- regression protection
 
-Topics:
+A production milestone additionally requires:
 
-- Docker containers
-- Bash workflows
-- system logs
-- services
-- SSH workflows
-- local monitoring
-- device diagnostics
+- deployment instructions
+- secrets handling
+- health/readiness checks
+- monitoring or tracing
+- rollback and failure-recovery notes
 
-### Jetson / ARM Linux
+## Weekly Operating Rule
 
-NVIDIA Jetson and ARM Linux experiments.
+Every week must produce visible engineering evidence: an endpoint, test suite, database migration, model service, agent tool, eval report, Docker image, deployment, dashboard, architecture decision or interview-ready case study.
 
-Topics:
+## Supporting Background
 
-- Jetson Linux
-- CUDA availability checks
-- camera/device testing
-- ARM package constraints
-- edge deployment notes
-
-### Local LLMs
-
-Local AI runtime experiments and notes.
-
-Topics:
-
-- llama.cpp
-- GGUF
-- quantized models
-- offline inference
-- CPU/GPU runtime constraints
-- edge LLM deployment thinking
-
-### Networking / Security Lab Notes
-
-Defensive and systems-level notes around networking and security labs.
-
-Topics:
-
-- TCP/IP fundamentals
-- OSI model awareness
-- IP addressing
-- subnet masks
-- Packet Tracer background
-- Kali / ParrotOS lab environment
-- authentication concepts
-- SQL injection awareness
-- Linux security basics
-
-## Technical Context
-
-This lab supports a broader direction: building AI-assisted edge systems that connect Linux devices, cameras, sensors, computer vision, local AI models, and automation logic into working physical-world systems.
-
-## Current Stack
-
-Python · Linux · Docker · Bash · Git · OpenCV · PyTorch · YOLO · ONNX · CUDA · TensorRT · NVIDIA Jetson · QEMU · UTM · GGUF · llama.cpp · ESP32 · Sensors · IoT · Computer Vision · Automation
+This repository also preserves practical experience with Linux, Docker, SSH, networking, NVIDIA Jetson, CUDA, PyTorch, OpenCV, cameras, local LLM runtimes and physical-system integration. These are supporting differentiators rather than the primary learning direction.
