@@ -1,39 +1,34 @@
 from collections.abc import Iterable
-from threading import Lock
 from uuid import UUID
 
 from .domain import Incident, IncidentNotFoundError, IncidentStatus
+from .repository import IncidentRepository, InMemoryIncidentRepository
 
 
 class IncidentService:
-    """Thread-safe in-memory service; replaced by PostgreSQL in Week 3."""
+    """Application service independent of the persistence technology."""
 
-    def __init__(self) -> None:
-        self._incidents: dict[UUID, Incident] = {}
-        self._lock = Lock()
+    def __init__(self, repository: IncidentRepository | None = None) -> None:
+        self._repository = repository or InMemoryIncidentRepository()
 
     def create(self, *, title: str, description: str) -> Incident:
         incident = Incident.create(title=title, description=description)
-        with self._lock:
-            self._incidents[incident.id] = incident
+        self._repository.add(incident)
         return incident
 
-    def list(self) -> Iterable[Incident]:
-        with self._lock:
-            return tuple(self._incidents.values())
+    def list(self, *, offset: int = 0, limit: int = 50) -> Iterable[Incident]:
+        return self._repository.list(offset=offset, limit=limit)
 
     def get(self, incident_id: UUID) -> Incident:
-        with self._lock:
-            incident = self._incidents.get(incident_id)
+        incident = self._repository.get(incident_id)
         if incident is None:
             raise IncidentNotFoundError(f"incident {incident_id} was not found")
         return incident
 
     def update_status(self, incident_id: UUID, status: IncidentStatus) -> Incident:
-        with self._lock:
-            incident = self._incidents.get(incident_id)
-            if incident is None:
-                raise IncidentNotFoundError(f"incident {incident_id} was not found")
-            updated = incident.transition_to(status)
-            self._incidents[incident_id] = updated
+        incident = self._repository.get(incident_id)
+        if incident is None:
+            raise IncidentNotFoundError(f"incident {incident_id} was not found")
+        updated = incident.transition_to(status)
+        self._repository.update(updated)
         return updated

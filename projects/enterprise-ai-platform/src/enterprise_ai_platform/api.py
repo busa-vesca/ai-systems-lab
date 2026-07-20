@@ -1,7 +1,8 @@
+import os
 from datetime import datetime
 from uuid import UUID
 
-from fastapi import Depends, FastAPI, Request, status
+from fastapi import Depends, FastAPI, Query, Request, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -12,6 +13,8 @@ from .domain import (
     InvalidStatusTransitionError,
 )
 from .service import IncidentService
+from .database import create_session_factory
+from .postgres_repository import PostgreSQLIncidentRepository
 
 
 class IncidentCreate(BaseModel):
@@ -35,7 +38,15 @@ class IncidentResponse(BaseModel):
 
 def create_app(service: IncidentService | None = None) -> FastAPI:
     app = FastAPI(title="Enterprise AI Platform", version="0.1.0")
-    app.state.incident_service = service or IncidentService()
+    if service is not None:
+        app.state.incident_service = service
+    elif database_url := os.getenv("DATABASE_URL"):
+        session_factory = create_session_factory(database_url)
+        app.state.incident_service = IncidentService(
+            PostgreSQLIncidentRepository(session_factory)
+        )
+    else:
+        app.state.incident_service = IncidentService()
 
     def get_service(request: Request) -> IncidentService:
         return request.app.state.incident_service
@@ -75,9 +86,11 @@ def create_app(service: IncidentService | None = None) -> FastAPI:
 
     @app.get("/incidents", response_model=list[IncidentResponse])
     def list_incidents(
+        offset: int = Query(default=0, ge=0),
+        limit: int = Query(default=50, ge=1, le=100),
         incident_service: IncidentService = Depends(get_service),
     ) -> list[Incident]:
-        return list(incident_service.list())
+        return list(incident_service.list(offset=offset, limit=limit))
 
     @app.get("/incidents/{incident_id}", response_model=IncidentResponse)
     def get_incident(

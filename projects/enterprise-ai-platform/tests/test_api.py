@@ -34,6 +34,19 @@ def test_incident_lifecycle() -> None:
     assert updated.json()["status"] == "investigating"
 
 
+def test_incident_list_is_paginated() -> None:
+    client = make_client()
+    for title in ("First", "Second"):
+        client.post(
+            "/incidents", json={"title": title, "description": "Failure"}
+        )
+
+    response = client.get("/incidents?offset=1&limit=1")
+
+    assert response.status_code == 200
+    assert [incident["title"] for incident in response.json()] == ["Second"]
+
+
 def test_missing_incident_returns_404() -> None:
     client = make_client()
 

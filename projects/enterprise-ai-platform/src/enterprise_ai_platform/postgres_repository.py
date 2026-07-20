@@ -1,0 +1,61 @@
+from collections.abc import Iterable
+from uuid import UUID
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session, sessionmaker
+
+from .database import session_scope
+from .domain import Incident, IncidentStatus
+from .models import IncidentRecord
+
+
+def _to_domain(record: IncidentRecord) -> Incident:
+    return Incident(
+        id=record.id,
+        title=record.title,
+        description=record.description,
+        status=IncidentStatus(record.status),
+        created_at=record.created_at,
+    )
+
+
+class PostgreSQLIncidentRepository:
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        self._session_factory = session_factory
+
+    def add(self, incident: Incident) -> None:
+        with session_scope(self._session_factory) as session:
+            session.add(
+                IncidentRecord(
+                    id=incident.id,
+                    title=incident.title,
+                    description=incident.description,
+                    status=incident.status.value,
+                    created_at=incident.created_at,
+                )
+            )
+
+    def list(self, *, offset: int = 0, limit: int = 50) -> Iterable[Incident]:
+        with session_scope(self._session_factory) as session:
+            records = session.scalars(
+                select(IncidentRecord)
+                .order_by(IncidentRecord.created_at)
+                .offset(offset)
+                .limit(limit)
+            ).all()
+            return tuple(_to_domain(record) for record in records)
+
+    def get(self, incident_id: UUID) -> Incident | None:
+        with session_scope(self._session_factory) as session:
+            record = session.get(IncidentRecord, incident_id)
+            return _to_domain(record) if record is not None else None
+
+    def update(self, incident: Incident) -> None:
+        with session_scope(self._session_factory) as session:
+            record = session.get(IncidentRecord, incident.id)
+            if record is None:
+                return
+            record.title = incident.title
+            record.description = incident.description
+            record.status = incident.status.value
+            record.created_at = incident.created_at
