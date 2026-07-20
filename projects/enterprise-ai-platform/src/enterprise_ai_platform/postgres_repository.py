@@ -1,7 +1,7 @@
 from collections.abc import Iterable
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from .database import session_scope
@@ -22,6 +22,14 @@ def _to_domain(record: IncidentRecord) -> Incident:
 class PostgreSQLIncidentRepository:
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
         self._session_factory = session_factory
+
+    def is_ready(self) -> bool:
+        try:
+            with session_scope(self._session_factory) as session:
+                session.execute(text("SELECT 1"))
+            return True
+        except Exception:
+            return False
 
     def add(self, incident: Incident) -> None:
         with session_scope(self._session_factory) as session:

@@ -44,6 +44,22 @@ pytest
 uvicorn enterprise_ai_platform.api:app --reload
 ```
 
+## Docker Compose
+
+Start the API and PostgreSQL together:
+
+```bash
+docker compose up --build
+```
+
+Compose waits for PostgreSQL, applies Alembic migrations, starts the API as a
+non-root user and checks `/ready`. Stop the stack without deleting database
+data:
+
+```bash
+docker compose down
+```
+
 ## Current Limitations
 
 - no authentication, pagination or audit trail yet

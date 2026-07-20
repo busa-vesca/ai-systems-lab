@@ -11,6 +11,9 @@ class IncidentService:
     def __init__(self, repository: IncidentRepository | None = None) -> None:
         self._repository = repository or InMemoryIncidentRepository()
 
+    def is_ready(self) -> bool:
+        return self._repository.is_ready()
+
     def create(self, *, title: str, description: str) -> Incident:
         incident = Incident.create(title=title, description=description)
         self._repository.add(incident)

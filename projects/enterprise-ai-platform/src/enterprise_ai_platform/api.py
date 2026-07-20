@@ -67,9 +67,19 @@ def create_app(service: IncidentService | None = None) -> FastAPI:
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
-    @app.get("/ready")
-    def ready() -> dict[str, str]:
-        return {"status": "ready"}
+    @app.get("/ready", response_model=None)
+    def ready(
+        incident_service: IncidentService = Depends(get_service),
+    ) -> JSONResponse:
+        if not incident_service.is_ready():
+            return JSONResponse(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                content={"status": "not_ready"},
+            )
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={"status": "ready"},
+        )
 
     @app.post(
         "/incidents",

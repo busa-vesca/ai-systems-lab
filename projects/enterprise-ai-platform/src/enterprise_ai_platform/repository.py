@@ -7,6 +7,8 @@ from .domain import Incident
 
 
 class IncidentRepository(Protocol):
+    def is_ready(self) -> bool: ...
+
     def add(self, incident: Incident) -> None: ...
 
     def list(self, *, offset: int = 0, limit: int = 50) -> Iterable[Incident]: ...
@@ -20,6 +22,9 @@ class InMemoryIncidentRepository:
     def __init__(self) -> None:
         self._incidents: dict[UUID, Incident] = {}
         self._lock = Lock()
+
+    def is_ready(self) -> bool:
+        return True
 
     def add(self, incident: Incident) -> None:
         with self._lock:
