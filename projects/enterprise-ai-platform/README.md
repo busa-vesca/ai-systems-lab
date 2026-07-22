@@ -98,6 +98,10 @@ PyTorch is intentionally installed by each platform image rather than by the
 generic `ai` dependency group. This prevents pip from replacing NVIDIA's
 Jetson-optimized CUDA build with an incompatible wheel.
 
+Transformers is pinned to `4.57.6`. Version 5.x imports PyTorch distributed
+DTensor components that are not included in NVIDIA's Jetson PyTorch build, even
+for single-device inference.
+
 Verify the runtime inside the API container:
 
 ```bash
