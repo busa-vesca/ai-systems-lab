@@ -1,8 +1,13 @@
 from collections.abc import Iterable
 from uuid import UUID
 
-from .domain import Incident, IncidentNotFoundError, IncidentStatus
-from .repository import IncidentRepository, InMemoryIncidentRepository
+from .domain import Incident, IncidentNotFoundError, IncidentStatus, ModelPrediction
+from .inference import IncidentClassifier
+from .repository import (
+    IncidentRepository,
+    InMemoryIncidentRepository,
+    PredictionRepository,
+)
 
 
 class IncidentService:
@@ -35,3 +40,32 @@ class IncidentService:
         updated = incident.transition_to(status)
         self._repository.update(updated)
         return updated
+
+
+class IncidentClassificationService:
+    def __init__(
+        self,
+        *,
+        incidents: IncidentService,
+        classifier: IncidentClassifier,
+        predictions: PredictionRepository,
+    ) -> None:
+        self._incidents = incidents
+        self._classifier = classifier
+        self._predictions = predictions
+
+    def classify(self, incident_id: UUID) -> ModelPrediction:
+        incident = self._incidents.get(incident_id)
+        result = self._classifier.classify(
+            f"{incident.title}. {incident.description}"
+        )
+        prediction = ModelPrediction.create(
+            incident_id=incident.id,
+            label=result.label,
+            score=result.score,
+            model_id=result.model_id,
+            model_revision=result.model_revision,
+            latency_ms=result.latency_ms,
+        )
+        self._predictions.add(prediction)
+        return prediction

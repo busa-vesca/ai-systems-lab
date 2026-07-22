@@ -5,8 +5,8 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from .database import session_scope
-from .domain import Incident, IncidentStatus
-from .models import IncidentRecord
+from .domain import Incident, IncidentStatus, ModelPrediction
+from .models import IncidentRecord, ModelPredictionRecord
 
 
 def _to_domain(record: IncidentRecord) -> Incident:
@@ -67,3 +67,23 @@ class PostgreSQLIncidentRepository:
             record.description = incident.description
             record.status = incident.status.value
             record.created_at = incident.created_at
+
+
+class PostgreSQLPredictionRepository:
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        self._session_factory = session_factory
+
+    def add(self, prediction: ModelPrediction) -> None:
+        with session_scope(self._session_factory) as session:
+            session.add(
+                ModelPredictionRecord(
+                    id=prediction.id,
+                    incident_id=prediction.incident_id,
+                    label=prediction.label,
+                    score=prediction.score,
+                    model_id=prediction.model_id,
+                    model_revision=prediction.model_revision,
+                    latency_ms=prediction.latency_ms,
+                    created_at=prediction.created_at,
+                )
+            )

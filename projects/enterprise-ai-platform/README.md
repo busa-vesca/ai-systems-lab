@@ -1,6 +1,6 @@
 # Enterprise AI Platform
 
-The central portfolio project. The current release is a tested FastAPI incident backend with domain rules and interchangeable in-memory/PostgreSQL persistence.
+The central portfolio project. The current release is a tested FastAPI incident backend with PostgreSQL persistence, Docker packaging and Hugging Face zero-shot incident classification.
 
 ## Current Architecture
 
@@ -10,16 +10,23 @@ HTTP request → Pydantic schema → FastAPI route → IncidentService
                                                → repository
                                                    ├── in-memory
                                                    └── PostgreSQL
+
+POST /incidents/{id}/classify
+  → IncidentClassificationService
+  → HuggingFaceIncidentClassifier (loaded once, pinned revision)
+  → ModelPrediction
+  → PostgreSQL
 ```
 
-Docker packaging is scheduled for Week 4; Hugging Face inference for Week 5.
+Normal API tests use a fake classifier. The real model is downloaded only when
+the classification endpoint is called for the first time.
 
 ## Run with the existing environment
 
 ```bash
 lab-pt
 cd "$HOME/ai-systems-lab/projects/enterprise-ai-platform"
-python -m pip install -e '.[dev]'
+python -m pip install -e '.[dev,ai]'
 uvicorn enterprise_ai_platform.api:app --reload
 ```
 
@@ -32,6 +39,15 @@ pytest
 ```
 
 Open `http://127.0.0.1:8000/docs` for the API contract.
+
+Create an incident, then call:
+
+```text
+POST /incidents/{incident_id}/classify
+```
+
+The response contains the selected label, confidence score, model ID, pinned
+revision and inference latency. The prediction is saved in PostgreSQL.
 
 ## PostgreSQL
 
@@ -53,17 +69,38 @@ docker compose up --build
 ```
 
 Compose waits for PostgreSQL, applies Alembic migrations, starts the API as a
-non-root user and checks `/ready`. Stop the stack without deleting database
+non-root user, persists the Hugging Face cache and checks `/ready`. The first
+classification downloads the model; later calls reuse the loaded model and
+cache. The image installs the CPU-only PyTorch wheel, so it does not pull CUDA
+libraries into a CPU service. Stop the stack without deleting database or model
 data:
 
 ```bash
 docker compose down
 ```
 
+## Model configuration
+
+Defaults:
+
+```text
+HF_MODEL_ID=cross-encoder/nli-MiniLM2-L6-H768
+HF_MODEL_REVISION=b95119ce93d3e065de6214e38cd4a97b0f2f2c6d
+```
+
+The labels are `database`, `network`, `authentication`, `application` and
+`infrastructure`. This Apache-2.0 licensed model is an English zero-shot
+baseline, not a model trained on our incident data.
+
+The revision is pinned for reproducibility. Model loading explicitly requires
+`model.safetensors` and disables remote model code, so it does not fall back to
+pickle-based `pytorch_model.bin` weights.
+
 ## Current Limitations
 
-- no authentication, pagination or audit trail yet
-- no model or agent is integrated yet
-- readiness currently checks application availability only
+- no authentication or audit trail yet
+- no agent or evaluation dataset yet
+- `/ready` checks PostgreSQL but does not warm or evaluate the model
+- CPU inference is serialized to keep the first production baseline safe
 
 These limitations map directly to later roadmap milestones rather than being hidden.

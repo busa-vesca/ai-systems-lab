@@ -11,10 +11,17 @@ from .domain import (
     IncidentNotFoundError,
     IncidentStatus,
     InvalidStatusTransitionError,
+    ModelInferenceError,
+    ModelPrediction,
 )
-from .service import IncidentService
+from .inference import HuggingFaceIncidentClassifier
+from .repository import InMemoryPredictionRepository
+from .service import IncidentClassificationService, IncidentService
 from .database import create_session_factory
-from .postgres_repository import PostgreSQLIncidentRepository
+from .postgres_repository import (
+    PostgreSQLIncidentRepository,
+    PostgreSQLPredictionRepository,
+)
 
 
 class IncidentCreate(BaseModel):
@@ -36,20 +43,52 @@ class IncidentResponse(BaseModel):
     created_at: datetime
 
 
-def create_app(service: IncidentService | None = None) -> FastAPI:
+class ModelPredictionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    incident_id: UUID
+    label: str
+    score: float
+    model_id: str
+    model_revision: str
+    latency_ms: float
+    created_at: datetime
+
+
+def create_app(
+    service: IncidentService | None = None,
+    classification_service: IncidentClassificationService | None = None,
+) -> FastAPI:
     app = FastAPI(title="Enterprise AI Platform", version="0.1.0")
     if service is not None:
         app.state.incident_service = service
+        prediction_repository = InMemoryPredictionRepository()
     elif database_url := os.getenv("DATABASE_URL"):
         session_factory = create_session_factory(database_url)
         app.state.incident_service = IncidentService(
             PostgreSQLIncidentRepository(session_factory)
         )
+        prediction_repository = PostgreSQLPredictionRepository(session_factory)
     else:
         app.state.incident_service = IncidentService()
+        prediction_repository = InMemoryPredictionRepository()
+
+    app.state.classification_service = classification_service or (
+        IncidentClassificationService(
+            incidents=app.state.incident_service,
+            classifier=HuggingFaceIncidentClassifier.from_environment(),
+            predictions=prediction_repository,
+        )
+    )
 
     def get_service(request: Request) -> IncidentService:
         return request.app.state.incident_service
+
+    def get_classification_service(
+        request: Request,
+    ) -> IncidentClassificationService:
+        return request.app.state.classification_service
 
     @app.exception_handler(IncidentNotFoundError)
     async def handle_not_found(
@@ -62,6 +101,12 @@ def create_app(service: IncidentService | None = None) -> FastAPI:
         _request: Request, error: InvalidStatusTransitionError
     ) -> JSONResponse:
         return JSONResponse(status_code=409, content={"detail": str(error)})
+
+    @app.exception_handler(ModelInferenceError)
+    async def handle_model_failure(
+        _request: Request, error: ModelInferenceError
+    ) -> JSONResponse:
+        return JSONResponse(status_code=502, content={"detail": str(error)})
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -116,6 +161,19 @@ def create_app(service: IncidentService | None = None) -> FastAPI:
         incident_service: IncidentService = Depends(get_service),
     ) -> Incident:
         return incident_service.update_status(incident_id, payload.status)
+
+    @app.post(
+        "/incidents/{incident_id}/classify",
+        response_model=ModelPredictionResponse,
+        status_code=status.HTTP_201_CREATED,
+    )
+    def classify_incident(
+        incident_id: UUID,
+        classification: IncidentClassificationService = Depends(
+            get_classification_service
+        ),
+    ) -> ModelPrediction:
+        return classification.classify(incident_id)
 
     return app
 

@@ -29,6 +29,10 @@ class InvalidStatusTransitionError(IncidentError):
     pass
 
 
+class ModelInferenceError(IncidentError):
+    """The model could not produce a usable prediction."""
+
+
 @dataclass(frozen=True, slots=True)
 class Incident:
     id: UUID
@@ -59,3 +63,41 @@ class Incident:
                 f"cannot transition incident from {self.status} to {status}"
             )
         return replace(self, status=status)
+
+
+@dataclass(frozen=True, slots=True)
+class ModelPrediction:
+    id: UUID
+    incident_id: UUID
+    label: str
+    score: float
+    model_id: str
+    model_revision: str
+    latency_ms: float
+    created_at: datetime
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        incident_id: UUID,
+        label: str,
+        score: float,
+        model_id: str,
+        model_revision: str,
+        latency_ms: float,
+    ) -> "ModelPrediction":
+        if not 0.0 <= score <= 1.0:
+            raise ValueError("prediction score must be between 0 and 1")
+        if latency_ms < 0:
+            raise ValueError("prediction latency must not be negative")
+        return cls(
+            id=uuid4(),
+            incident_id=incident_id,
+            label=label,
+            score=score,
+            model_id=model_id,
+            model_revision=model_revision,
+            latency_ms=latency_ms,
+            created_at=datetime.now(UTC),
+        )
