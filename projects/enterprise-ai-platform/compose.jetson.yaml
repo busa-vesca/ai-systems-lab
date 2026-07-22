@@ -1,0 +1,10 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.jetson
+    runtime: nvidia
+    shm_size: "512m"
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility

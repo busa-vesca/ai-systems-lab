@@ -79,6 +79,32 @@ data:
 docker compose down
 ```
 
+## Run with GPU on Jetson
+
+The Jetson deployment is validated for JetPack 6.2.x on Orin with NVIDIA's
+`25.06-py3-igpu` PyTorch container. It keeps the normal CPU image unchanged and
+adds the Jetson settings through a Compose override:
+
+```bash
+docker compose -f compose.yaml -f compose.jetson.yaml up --build -d
+```
+
+The NVIDIA runtime exposes the Orin GPU to the API container. At model load,
+`torch.cuda.is_available()` selects `cuda:0`; on a machine without CUDA the same
+Python code falls back to CPU. The first classification downloads the pinned
+safetensors model into the persistent model cache.
+
+PyTorch is intentionally installed by each platform image rather than by the
+generic `ai` dependency group. This prevents pip from replacing NVIDIA's
+Jetson-optimized CUDA build with an incompatible wheel.
+
+Verify the runtime inside the API container:
+
+```bash
+docker compose -f compose.yaml -f compose.jetson.yaml exec api python3 -c \
+  'import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))'
+```
+
 ## Model configuration
 
 Defaults:

@@ -18,7 +18,6 @@ dependencies = [
 
 [project.optional-dependencies]
 ai = [
-  "torch>=2.4,<3",
   "transformers>=5.14,<6",
 ]
 dev = [

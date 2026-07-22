@@ -1,0 +1,26 @@
+FROM nvcr.io/nvidia/pytorch:25.06-py3-igpu
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    HF_HOME=/models
+
+WORKDIR /app
+
+RUN groupadd --system app \
+    && useradd --system --gid app --create-home app \
+    && mkdir -p /models \
+    && chown app:app /models
+
+COPY pyproject.toml README.md ./
+COPY src ./src
+COPY alembic.ini ./
+COPY migrations ./migrations
+
+# The NVIDIA base image already contains its Jetson-compatible CUDA PyTorch.
+RUN python3 -m pip install --no-cache-dir '.[ai]'
+
+USER app
+
+EXPOSE 8000
+
+CMD ["sh", "-c", "alembic upgrade head && uvicorn enterprise_ai_platform.api:app --host 0.0.0.0 --port 8000"]

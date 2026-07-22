@@ -21,6 +21,11 @@ DEFAULT_LABEL_PROMPTS = (
 logger = logging.getLogger(__name__)
 
 
+def select_pipeline_device(*, cuda_available: bool) -> int:
+    """Map PyTorch CUDA availability to the Transformers device convention."""
+    return 0 if cuda_available else -1
+
+
 @dataclass(frozen=True, slots=True)
 class ClassificationResult:
     label: str
@@ -62,13 +67,27 @@ class HuggingFaceIncidentClassifier:
     def _load_pipeline(self) -> Any:
         if self._pipeline is None:
             try:
+                import torch
                 from transformers import pipeline
 
+                device = select_pipeline_device(
+                    cuda_available=torch.cuda.is_available()
+                )
+                logger.info(
+                    "loading inference model",
+                    extra={
+                        "inference_device": (
+                            "cuda:0" if device == 0 else "cpu"
+                        ),
+                        "model_id": self.model_id,
+                        "model_revision": self.model_revision,
+                    },
+                )
                 self._pipeline = pipeline(
                     task="zero-shot-classification",
                     model=self.model_id,
                     revision=self.model_revision,
-                    device=-1,
+                    device=device,
                     trust_remote_code=False,
                     model_kwargs={"use_safetensors": True},
                 )
