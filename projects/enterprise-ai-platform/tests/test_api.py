@@ -28,13 +28,14 @@ class FailingClassifier:
 
 
 class LabelClassifier:
-    def __init__(self, label: str) -> None:
+    def __init__(self, label: str, score: float = 0.91) -> None:
         self._label = label
+        self._score = score
 
     def classify(self, _text: str) -> ClassificationResult:
         return ClassificationResult(
             label=self._label,
-            score=0.91,
+            score=self._score,
             model_id="fake/model",
             model_revision="test-revision",
             latency_ms=12.5,
@@ -202,4 +203,25 @@ def test_incident_without_configured_diagnostic_tool_is_skipped() -> None:
     assert response.json()["tool_result"] is None
     assert response.json()["skipped_reason"] == (
         "no diagnostic tool configured for label: network"
+    )
+
+
+def test_low_confidence_prediction_does_not_run_tool() -> None:
+    client = make_diagnosis_client(LabelClassifier("database", score=0.379))
+    incident_id = client.post(
+        "/incidents",
+        json={
+            "title": "DNS resolution failure",
+            "description": "Cannot resolve the upstream hostname",
+        },
+    ).json()["id"]
+
+    response = client.post(f"/incidents/{incident_id}/diagnose")
+
+    assert response.status_code == 200
+    assert response.json()["prediction"]["label"] == "database"
+    assert response.json()["prediction"]["score"] == 0.379
+    assert response.json()["tool_result"] is None
+    assert response.json()["skipped_reason"] == (
+        "prediction confidence 0.379 is below tool threshold 0.600"
     )
