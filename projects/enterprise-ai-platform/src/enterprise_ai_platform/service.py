@@ -2,12 +2,19 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from uuid import UUID
 
-from .domain import Incident, IncidentNotFoundError, IncidentStatus, ModelPrediction
+from .domain import (
+    Incident,
+    IncidentNotFoundError,
+    IncidentStatus,
+    ModelPrediction,
+    ToolExecution,
+)
 from .inference import IncidentClassifier
 from .repository import (
     IncidentRepository,
     InMemoryIncidentRepository,
     PredictionRepository,
+    ToolExecutionRepository,
 )
 from .tools import SafeToolExecutor, ToolCall, ToolResult
 
@@ -77,6 +84,7 @@ class IncidentClassificationService:
 class IncidentDiagnosis:
     prediction: ModelPrediction
     tool_result: ToolResult | None
+    tool_execution_id: UUID | None
     skipped_reason: str | None
 
 
@@ -91,9 +99,11 @@ class IncidentDiagnosisService:
         *,
         classification: IncidentClassificationService,
         executor: SafeToolExecutor,
+        executions: ToolExecutionRepository,
     ) -> None:
         self._classification = classification
         self._executor = executor
+        self._executions = executions
 
     def diagnose(self, incident_id: UUID) -> IncidentDiagnosis:
         prediction = self._classification.classify(incident_id)
@@ -101,6 +111,7 @@ class IncidentDiagnosisService:
             return IncidentDiagnosis(
                 prediction=prediction,
                 tool_result=None,
+                tool_execution_id=None,
                 skipped_reason=(
                     f"prediction confidence {prediction.score:.3f} is below "
                     f"tool threshold {self.MIN_TOOL_CONFIDENCE:.3f}"
@@ -112,6 +123,7 @@ class IncidentDiagnosisService:
             return IncidentDiagnosis(
                 prediction=prediction,
                 tool_result=None,
+                tool_execution_id=None,
                 skipped_reason=(
                     f"no diagnostic tool configured for label: {prediction.label}"
                 ),
@@ -120,8 +132,19 @@ class IncidentDiagnosisService:
         tool_result = self._executor.execute(
             ToolCall(name=tool_name, arguments={})
         )
+        execution = ToolExecution.create(
+            incident_id=prediction.incident_id,
+            prediction_id=prediction.id,
+            tool_name=tool_result.tool_name,
+            status=tool_result.status.value,
+            output=tool_result.output,
+            error=tool_result.error,
+            latency_ms=tool_result.latency_ms,
+        )
+        self._executions.add(execution)
         return IncidentDiagnosis(
             prediction=prediction,
             tool_result=tool_result,
+            tool_execution_id=execution.id,
             skipped_reason=None,
         )

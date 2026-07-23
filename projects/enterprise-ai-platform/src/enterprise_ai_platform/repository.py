@@ -3,7 +3,7 @@ from threading import Lock
 from typing import Protocol
 from uuid import UUID
 
-from .domain import Incident, ModelPrediction
+from .domain import Incident, ModelPrediction, ToolExecution
 
 
 class IncidentRepository(Protocol):
@@ -20,6 +20,10 @@ class IncidentRepository(Protocol):
 
 class PredictionRepository(Protocol):
     def add(self, prediction: ModelPrediction) -> None: ...
+
+
+class ToolExecutionRepository(Protocol):
+    def add(self, execution: ToolExecution) -> None: ...
 
 
 class InMemoryIncidentRepository:
@@ -56,3 +60,13 @@ class InMemoryPredictionRepository:
     def add(self, prediction: ModelPrediction) -> None:
         with self._lock:
             self._predictions[prediction.id] = prediction
+
+
+class InMemoryToolExecutionRepository:
+    def __init__(self) -> None:
+        self._executions: dict[UUID, ToolExecution] = {}
+        self._lock = Lock()
+
+    def add(self, execution: ToolExecution) -> None:
+        with self._lock:
+            self._executions[execution.id] = execution

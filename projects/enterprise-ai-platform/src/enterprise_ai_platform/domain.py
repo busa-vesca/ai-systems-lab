@@ -101,3 +101,44 @@ class ModelPrediction:
             latency_ms=latency_ms,
             created_at=datetime.now(UTC),
         )
+
+
+@dataclass(frozen=True, slots=True)
+class ToolExecution:
+    id: UUID
+    incident_id: UUID
+    prediction_id: UUID
+    tool_name: str
+    status: str
+    output: dict[str, object]
+    error: str | None
+    latency_ms: float
+    created_at: datetime
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        incident_id: UUID,
+        prediction_id: UUID,
+        tool_name: str,
+        status: str,
+        output: dict[str, object],
+        error: str | None,
+        latency_ms: float,
+    ) -> "ToolExecution":
+        if status not in {"succeeded", "failed"}:
+            raise ValueError("unsupported tool execution status")
+        if latency_ms < 0:
+            raise ValueError("tool execution latency must not be negative")
+        return cls(
+            id=uuid4(),
+            incident_id=incident_id,
+            prediction_id=prediction_id,
+            tool_name=tool_name,
+            status=status,
+            output=dict(output),
+            error=error,
+            latency_ms=latency_ms,
+            created_at=datetime.now(UTC),
+        )

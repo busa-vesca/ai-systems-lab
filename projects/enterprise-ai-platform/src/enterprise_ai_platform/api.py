@@ -19,8 +19,12 @@ from .inference import HuggingFaceIncidentClassifier
 from .postgres_repository import (
     PostgreSQLIncidentRepository,
     PostgreSQLPredictionRepository,
+    PostgreSQLToolExecutionRepository,
 )
-from .repository import InMemoryPredictionRepository
+from .repository import (
+    InMemoryPredictionRepository,
+    InMemoryToolExecutionRepository,
+)
 from .service import (
     IncidentClassificationService,
     IncidentDiagnosis,
@@ -82,6 +86,7 @@ class IncidentDiagnosisResponse(BaseModel):
 
     prediction: ModelPredictionResponse
     tool_result: ToolResultResponse | None
+    tool_execution_id: UUID | None
     skipped_reason: str | None
 
 
@@ -94,6 +99,7 @@ def create_app(
     if service is not None:
         app.state.incident_service = service
         prediction_repository = InMemoryPredictionRepository()
+        tool_execution_repository = InMemoryToolExecutionRepository()
         default_tool_executor = SafeToolExecutor(())
     elif database_url := os.getenv("DATABASE_URL"):
         session_factory = create_session_factory(database_url)
@@ -101,12 +107,16 @@ def create_app(
             PostgreSQLIncidentRepository(session_factory)
         )
         prediction_repository = PostgreSQLPredictionRepository(session_factory)
+        tool_execution_repository = PostgreSQLToolExecutionRepository(
+            session_factory
+        )
         default_tool_executor = SafeToolExecutor(
             (DatabaseHealthTool(session_factory),)
         )
     else:
         app.state.incident_service = IncidentService()
         prediction_repository = InMemoryPredictionRepository()
+        tool_execution_repository = InMemoryToolExecutionRepository()
         default_tool_executor = SafeToolExecutor(())
 
     app.state.classification_service = classification_service or (
@@ -119,6 +129,7 @@ def create_app(
     app.state.diagnosis_service = IncidentDiagnosisService(
         classification=app.state.classification_service,
         executor=tool_executor or default_tool_executor,
+        executions=tool_execution_repository,
     )
 
     def get_service(request: Request) -> IncidentService:

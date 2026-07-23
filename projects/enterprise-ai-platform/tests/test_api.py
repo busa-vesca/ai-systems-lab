@@ -186,6 +186,7 @@ def test_database_incident_runs_allowed_diagnostic_tool() -> None:
     assert response.json()["tool_result"]["output"] == {
         "database_available": True
     }
+    assert response.json()["tool_execution_id"] is not None
     assert response.json()["skipped_reason"] is None
 
 
@@ -201,6 +202,7 @@ def test_incident_without_configured_diagnostic_tool_is_skipped() -> None:
     assert response.status_code == 200
     assert response.json()["prediction"]["label"] == "network"
     assert response.json()["tool_result"] is None
+    assert response.json()["tool_execution_id"] is None
     assert response.json()["skipped_reason"] == (
         "no diagnostic tool configured for label: network"
     )
@@ -222,6 +224,7 @@ def test_low_confidence_prediction_does_not_run_tool() -> None:
     assert response.json()["prediction"]["label"] == "database"
     assert response.json()["prediction"]["score"] == 0.379
     assert response.json()["tool_result"] is None
+    assert response.json()["tool_execution_id"] is None
     assert response.json()["skipped_reason"] == (
         "prediction confidence 0.379 is below tool threshold 0.600"
     )
