@@ -44,6 +44,7 @@ class LabelClassifier:
 
 class FakeDatabaseHealthTool:
     name = "check_database_health"
+    retry_safe = True
 
     def run(self, _arguments: dict[str, object]) -> dict[str, object]:
         return {"database_available": True}
@@ -183,6 +184,7 @@ def test_database_incident_runs_allowed_diagnostic_tool() -> None:
         "check_database_health"
     )
     assert response.json()["tool_result"]["status"] == "succeeded"
+    assert response.json()["tool_result"]["attempts"] == 1
     assert response.json()["tool_result"]["output"] == {
         "database_available": True
     }

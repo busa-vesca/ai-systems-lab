@@ -72,6 +72,10 @@ class ToolExecutionRecord(Base):
             "latency_ms >= 0",
             name="ck_tool_executions_latency",
         ),
+        CheckConstraint(
+            "attempts >= 1",
+            name="ck_tool_executions_attempts",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(
@@ -96,6 +100,7 @@ class ToolExecutionRecord(Base):
     output: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     latency_ms: Mapped[float] = mapped_column(Float, nullable=False)
+    attempts: Mapped[int] = mapped_column(nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, index=True
     )

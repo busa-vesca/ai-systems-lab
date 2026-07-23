@@ -79,6 +79,7 @@ class ToolResultResponse(BaseModel):
     output: dict[str, object]
     error: str | None
     latency_ms: float
+    attempts: int
 
 
 class IncidentDiagnosisResponse(BaseModel):

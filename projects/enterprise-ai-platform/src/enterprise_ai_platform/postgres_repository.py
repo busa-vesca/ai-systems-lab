@@ -109,6 +109,7 @@ class PostgreSQLToolExecutionRepository:
                     output=execution.output,
                     error=execution.error,
                     latency_ms=execution.latency_ms,
+                    attempts=execution.attempts,
                     created_at=execution.created_at,
                 )
             )

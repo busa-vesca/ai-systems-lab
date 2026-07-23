@@ -113,6 +113,7 @@ class ToolExecution:
     output: dict[str, object]
     error: str | None
     latency_ms: float
+    attempts: int
     created_at: datetime
 
     @classmethod
@@ -126,11 +127,14 @@ class ToolExecution:
         output: dict[str, object],
         error: str | None,
         latency_ms: float,
+        attempts: int,
     ) -> "ToolExecution":
         if status not in {"succeeded", "failed"}:
             raise ValueError("unsupported tool execution status")
         if latency_ms < 0:
             raise ValueError("tool execution latency must not be negative")
+        if attempts < 1:
+            raise ValueError("tool execution attempts must be at least 1")
         return cls(
             id=uuid4(),
             incident_id=incident_id,
@@ -140,5 +144,6 @@ class ToolExecution:
             output=dict(output),
             error=error,
             latency_ms=latency_ms,
+            attempts=attempts,
             created_at=datetime.now(UTC),
         )

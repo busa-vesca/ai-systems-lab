@@ -140,6 +140,7 @@ class IncidentDiagnosisService:
             output=tool_result.output,
             error=tool_result.error,
             latency_ms=tool_result.latency_ms,
+            attempts=tool_result.attempts,
         )
         self._executions.add(execution)
         return IncidentDiagnosis(

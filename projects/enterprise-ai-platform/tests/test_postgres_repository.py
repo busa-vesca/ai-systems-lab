@@ -103,6 +103,7 @@ def test_postgres_repository_persists_tool_execution() -> None:
         output={"database_available": True},
         error=None,
         latency_ms=1.4,
+        attempts=1,
     )
     try:
         PostgreSQLIncidentRepository(session_factory).add(incident)
@@ -116,6 +117,7 @@ def test_postgres_repository_persists_tool_execution() -> None:
             assert stored.prediction_id == prediction.id
             assert stored.tool_name == "check_database_health"
             assert stored.output == {"database_available": True}
+            assert stored.attempts == 1
     finally:
         with session_factory.begin() as session:
             session.execute(
