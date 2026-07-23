@@ -81,6 +81,7 @@ class IncidentDiagnosis:
 
 
 class IncidentDiagnosisService:
+    MIN_TOOL_CONFIDENCE = 0.60
     TOOL_BY_LABEL = {
         "database": "check_database_health",
     }
@@ -96,6 +97,16 @@ class IncidentDiagnosisService:
 
     def diagnose(self, incident_id: UUID) -> IncidentDiagnosis:
         prediction = self._classification.classify(incident_id)
+        if prediction.score < self.MIN_TOOL_CONFIDENCE:
+            return IncidentDiagnosis(
+                prediction=prediction,
+                tool_result=None,
+                skipped_reason=(
+                    f"prediction confidence {prediction.score:.3f} is below "
+                    f"tool threshold {self.MIN_TOOL_CONFIDENCE:.3f}"
+                ),
+            )
+
         tool_name = self.TOOL_BY_LABEL.get(prediction.label)
         if tool_name is None:
             return IncidentDiagnosis(
