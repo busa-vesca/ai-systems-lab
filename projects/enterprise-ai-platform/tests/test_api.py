@@ -8,6 +8,7 @@ from enterprise_ai_platform.service import (
     IncidentClassificationService,
     IncidentService,
 )
+from enterprise_ai_platform.tools import SafeToolExecutor
 
 
 class FakeClassifier:
@@ -26,6 +27,27 @@ class FailingClassifier:
         raise ModelInferenceError("model inference failed")
 
 
+class LabelClassifier:
+    def __init__(self, label: str) -> None:
+        self._label = label
+
+    def classify(self, _text: str) -> ClassificationResult:
+        return ClassificationResult(
+            label=self._label,
+            score=0.91,
+            model_id="fake/model",
+            model_revision="test-revision",
+            latency_ms=12.5,
+        )
+
+
+class FakeDatabaseHealthTool:
+    name = "check_database_health"
+
+    def run(self, _arguments: dict[str, object]) -> dict[str, object]:
+        return {"database_available": True}
+
+
 def make_client() -> TestClient:
     return TestClient(create_app(IncidentService()))
 
@@ -38,6 +60,17 @@ def make_classification_client(classifier: IncidentClassifier) -> TestClient:
         predictions=InMemoryPredictionRepository(),
     )
     return TestClient(create_app(incidents, classification))
+
+
+def make_diagnosis_client(classifier: IncidentClassifier) -> TestClient:
+    incidents = IncidentService()
+    classification = IncidentClassificationService(
+        incidents=incidents,
+        classifier=classifier,
+        predictions=InMemoryPredictionRepository(),
+    )
+    executor = SafeToolExecutor((FakeDatabaseHealthTool(),))
+    return TestClient(create_app(incidents, classification, executor))
 
 
 def test_health_and_readiness() -> None:
@@ -129,3 +162,44 @@ def test_model_failure_returns_controlled_502() -> None:
 
     assert response.status_code == 502
     assert response.json() == {"detail": "model inference failed"}
+
+
+def test_database_incident_runs_allowed_diagnostic_tool() -> None:
+    client = make_diagnosis_client(LabelClassifier("database"))
+    incident_id = client.post(
+        "/incidents",
+        json={
+            "title": "Database connection failure",
+            "description": "PostgreSQL timed out",
+        },
+    ).json()["id"]
+
+    response = client.post(f"/incidents/{incident_id}/diagnose")
+
+    assert response.status_code == 200
+    assert response.json()["prediction"]["label"] == "database"
+    assert response.json()["tool_result"]["tool_name"] == (
+        "check_database_health"
+    )
+    assert response.json()["tool_result"]["status"] == "succeeded"
+    assert response.json()["tool_result"]["output"] == {
+        "database_available": True
+    }
+    assert response.json()["skipped_reason"] is None
+
+
+def test_incident_without_configured_diagnostic_tool_is_skipped() -> None:
+    client = make_diagnosis_client(LabelClassifier("network"))
+    incident_id = client.post(
+        "/incidents",
+        json={"title": "Network alert", "description": "Connection lost"},
+    ).json()["id"]
+
+    response = client.post(f"/incidents/{incident_id}/diagnose")
+
+    assert response.status_code == 200
+    assert response.json()["prediction"]["label"] == "network"
+    assert response.json()["tool_result"] is None
+    assert response.json()["skipped_reason"] == (
+        "no diagnostic tool configured for label: network"
+    )

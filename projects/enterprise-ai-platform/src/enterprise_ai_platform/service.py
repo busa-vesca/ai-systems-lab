@@ -1,4 +1,5 @@
 from collections.abc import Iterable
+from dataclasses import dataclass
 from uuid import UUID
 
 from .domain import Incident, IncidentNotFoundError, IncidentStatus, ModelPrediction
@@ -8,6 +9,7 @@ from .repository import (
     InMemoryIncidentRepository,
     PredictionRepository,
 )
+from .tools import SafeToolExecutor, ToolCall, ToolResult
 
 
 class IncidentService:
@@ -69,3 +71,46 @@ class IncidentClassificationService:
         )
         self._predictions.add(prediction)
         return prediction
+
+
+@dataclass(frozen=True, slots=True)
+class IncidentDiagnosis:
+    prediction: ModelPrediction
+    tool_result: ToolResult | None
+    skipped_reason: str | None
+
+
+class IncidentDiagnosisService:
+    TOOL_BY_LABEL = {
+        "database": "check_database_health",
+    }
+
+    def __init__(
+        self,
+        *,
+        classification: IncidentClassificationService,
+        executor: SafeToolExecutor,
+    ) -> None:
+        self._classification = classification
+        self._executor = executor
+
+    def diagnose(self, incident_id: UUID) -> IncidentDiagnosis:
+        prediction = self._classification.classify(incident_id)
+        tool_name = self.TOOL_BY_LABEL.get(prediction.label)
+        if tool_name is None:
+            return IncidentDiagnosis(
+                prediction=prediction,
+                tool_result=None,
+                skipped_reason=(
+                    f"no diagnostic tool configured for label: {prediction.label}"
+                ),
+            )
+
+        tool_result = self._executor.execute(
+            ToolCall(name=tool_name, arguments={})
+        )
+        return IncidentDiagnosis(
+            prediction=prediction,
+            tool_result=tool_result,
+            skipped_reason=None,
+        )

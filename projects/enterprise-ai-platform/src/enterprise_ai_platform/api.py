@@ -6,6 +6,7 @@ from fastapi import Depends, FastAPI, Query, Request, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
+from .database import create_session_factory
 from .domain import (
     Incident,
     IncidentNotFoundError,
@@ -15,12 +16,22 @@ from .domain import (
     ModelPrediction,
 )
 from .inference import HuggingFaceIncidentClassifier
-from .repository import InMemoryPredictionRepository
-from .service import IncidentClassificationService, IncidentService
-from .database import create_session_factory
 from .postgres_repository import (
     PostgreSQLIncidentRepository,
     PostgreSQLPredictionRepository,
+)
+from .repository import InMemoryPredictionRepository
+from .service import (
+    IncidentClassificationService,
+    IncidentDiagnosis,
+    IncidentDiagnosisService,
+    IncidentService,
+)
+from .tools import (
+    DatabaseHealthTool,
+    SafeToolExecutor,
+    ToolExecutionStatus,
+    ToolNotAllowedError,
 )
 
 
@@ -56,23 +67,47 @@ class ModelPredictionResponse(BaseModel):
     created_at: datetime
 
 
+class ToolResultResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    tool_name: str
+    status: ToolExecutionStatus
+    output: dict[str, object]
+    error: str | None
+    latency_ms: float
+
+
+class IncidentDiagnosisResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    prediction: ModelPredictionResponse
+    tool_result: ToolResultResponse | None
+    skipped_reason: str | None
+
+
 def create_app(
     service: IncidentService | None = None,
     classification_service: IncidentClassificationService | None = None,
+    tool_executor: SafeToolExecutor | None = None,
 ) -> FastAPI:
     app = FastAPI(title="Enterprise AI Platform", version="0.1.0")
     if service is not None:
         app.state.incident_service = service
         prediction_repository = InMemoryPredictionRepository()
+        default_tool_executor = SafeToolExecutor(())
     elif database_url := os.getenv("DATABASE_URL"):
         session_factory = create_session_factory(database_url)
         app.state.incident_service = IncidentService(
             PostgreSQLIncidentRepository(session_factory)
         )
         prediction_repository = PostgreSQLPredictionRepository(session_factory)
+        default_tool_executor = SafeToolExecutor(
+            (DatabaseHealthTool(session_factory),)
+        )
     else:
         app.state.incident_service = IncidentService()
         prediction_repository = InMemoryPredictionRepository()
+        default_tool_executor = SafeToolExecutor(())
 
     app.state.classification_service = classification_service or (
         IncidentClassificationService(
@@ -80,6 +115,10 @@ def create_app(
             classifier=HuggingFaceIncidentClassifier.from_environment(),
             predictions=prediction_repository,
         )
+    )
+    app.state.diagnosis_service = IncidentDiagnosisService(
+        classification=app.state.classification_service,
+        executor=tool_executor or default_tool_executor,
     )
 
     def get_service(request: Request) -> IncidentService:
@@ -89,6 +128,9 @@ def create_app(
         request: Request,
     ) -> IncidentClassificationService:
         return request.app.state.classification_service
+
+    def get_diagnosis_service(request: Request) -> IncidentDiagnosisService:
+        return request.app.state.diagnosis_service
 
     @app.exception_handler(IncidentNotFoundError)
     async def handle_not_found(
@@ -107,6 +149,15 @@ def create_app(
         _request: Request, error: ModelInferenceError
     ) -> JSONResponse:
         return JSONResponse(status_code=502, content={"detail": str(error)})
+
+    @app.exception_handler(ToolNotAllowedError)
+    async def handle_tool_not_configured(
+        _request: Request, _error: ToolNotAllowedError
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "diagnostic tool is not configured"},
+        )
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -174,6 +225,16 @@ def create_app(
         ),
     ) -> ModelPrediction:
         return classification.classify(incident_id)
+
+    @app.post(
+        "/incidents/{incident_id}/diagnose",
+        response_model=IncidentDiagnosisResponse,
+    )
+    def diagnose_incident(
+        incident_id: UUID,
+        diagnosis: IncidentDiagnosisService = Depends(get_diagnosis_service),
+    ) -> IncidentDiagnosis:
+        return diagnosis.diagnose(incident_id)
 
     return app
 
