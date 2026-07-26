@@ -20,10 +20,12 @@ from .postgres_repository import (
     PostgreSQLIncidentRepository,
     PostgreSQLPredictionRepository,
     PostgreSQLToolExecutionRepository,
+    PostgreSQLWorkflowCheckpointRepository,
 )
 from .repository import (
     InMemoryPredictionRepository,
     InMemoryToolExecutionRepository,
+    InMemoryWorkflowCheckpointRepository,
 )
 from .service import (
     IncidentClassificationService,
@@ -37,6 +39,7 @@ from .tools import (
     ToolExecutionStatus,
     ToolNotAllowedError,
 )
+from .workflow import WorkflowStep
 
 
 class IncidentCreate(BaseModel):
@@ -89,6 +92,9 @@ class IncidentDiagnosisResponse(BaseModel):
     tool_result: ToolResultResponse | None
     tool_execution_id: UUID | None
     skipped_reason: str | None
+    workflow_run_id: UUID
+    workflow_step: WorkflowStep
+    workflow_version: int
 
 
 def create_app(
@@ -101,6 +107,9 @@ def create_app(
         app.state.incident_service = service
         prediction_repository = InMemoryPredictionRepository()
         tool_execution_repository = InMemoryToolExecutionRepository()
+        workflow_checkpoint_repository = (
+            InMemoryWorkflowCheckpointRepository()
+        )
         default_tool_executor = SafeToolExecutor(())
     elif database_url := os.getenv("DATABASE_URL"):
         session_factory = create_session_factory(database_url)
@@ -111,6 +120,9 @@ def create_app(
         tool_execution_repository = PostgreSQLToolExecutionRepository(
             session_factory
         )
+        workflow_checkpoint_repository = (
+            PostgreSQLWorkflowCheckpointRepository(session_factory)
+        )
         default_tool_executor = SafeToolExecutor(
             (DatabaseHealthTool(session_factory),)
         )
@@ -118,6 +130,9 @@ def create_app(
         app.state.incident_service = IncidentService()
         prediction_repository = InMemoryPredictionRepository()
         tool_execution_repository = InMemoryToolExecutionRepository()
+        workflow_checkpoint_repository = (
+            InMemoryWorkflowCheckpointRepository()
+        )
         default_tool_executor = SafeToolExecutor(())
 
     app.state.classification_service = classification_service or (
@@ -131,6 +146,7 @@ def create_app(
         classification=app.state.classification_service,
         executor=tool_executor or default_tool_executor,
         executions=tool_execution_repository,
+        checkpoints=workflow_checkpoint_repository,
     )
 
     def get_service(request: Request) -> IncidentService:

@@ -15,8 +15,10 @@ from .repository import (
     InMemoryIncidentRepository,
     PredictionRepository,
     ToolExecutionRepository,
+    WorkflowCheckpointRepository,
 )
 from .tools import SafeToolExecutor, ToolCall, ToolResult
+from .workflow import WorkflowState, WorkflowStep
 
 
 class IncidentService:
@@ -86,6 +88,9 @@ class IncidentDiagnosis:
     tool_result: ToolResult | None
     tool_execution_id: UUID | None
     skipped_reason: str | None
+    workflow_run_id: UUID
+    workflow_step: WorkflowStep
+    workflow_version: int
 
 
 class IncidentDiagnosisService:
@@ -100,52 +105,96 @@ class IncidentDiagnosisService:
         classification: IncidentClassificationService,
         executor: SafeToolExecutor,
         executions: ToolExecutionRepository,
+        checkpoints: WorkflowCheckpointRepository,
     ) -> None:
         self._classification = classification
         self._executor = executor
         self._executions = executions
+        self._checkpoints = checkpoints
 
-    def diagnose(self, incident_id: UUID) -> IncidentDiagnosis:
-        prediction = self._classification.classify(incident_id)
-        if prediction.score < self.MIN_TOOL_CONFIDENCE:
-            return IncidentDiagnosis(
-                prediction=prediction,
-                tool_result=None,
-                tool_execution_id=None,
-                skipped_reason=(
-                    f"prediction confidence {prediction.score:.3f} is below "
-                    f"tool threshold {self.MIN_TOOL_CONFIDENCE:.3f}"
-                ),
-            )
+    def _transition(
+        self,
+        state: WorkflowState,
+        step: WorkflowStep,
+    ) -> WorkflowState:
+        next_state = state.transition_to(step)
+        self._checkpoints.add(next_state)
+        return next_state
 
-        tool_name = self.TOOL_BY_LABEL.get(prediction.label)
-        if tool_name is None:
-            return IncidentDiagnosis(
-                prediction=prediction,
-                tool_result=None,
-                tool_execution_id=None,
-                skipped_reason=(
-                    f"no diagnostic tool configured for label: {prediction.label}"
-                ),
-            )
-
-        tool_result = self._executor.execute(
-            ToolCall(name=tool_name, arguments={})
-        )
-        execution = ToolExecution.create(
-            incident_id=prediction.incident_id,
-            prediction_id=prediction.id,
-            tool_name=tool_result.tool_name,
-            status=tool_result.status.value,
-            output=tool_result.output,
-            error=tool_result.error,
-            latency_ms=tool_result.latency_ms,
-            attempts=tool_result.attempts,
-        )
-        self._executions.add(execution)
+    def _result(
+        self,
+        *,
+        state: WorkflowState,
+        prediction: ModelPrediction,
+        tool_result: ToolResult | None = None,
+        tool_execution_id: UUID | None = None,
+        skipped_reason: str | None = None,
+    ) -> IncidentDiagnosis:
         return IncidentDiagnosis(
             prediction=prediction,
             tool_result=tool_result,
-            tool_execution_id=execution.id,
-            skipped_reason=None,
+            tool_execution_id=tool_execution_id,
+            skipped_reason=skipped_reason,
+            workflow_run_id=state.run_id,
+            workflow_step=state.step,
+            workflow_version=state.version,
         )
+
+    def diagnose(self, incident_id: UUID) -> IncidentDiagnosis:
+        state = WorkflowState.start(incident_id=incident_id)
+        self._checkpoints.add(state)
+        try:
+            prediction = self._classification.classify(incident_id)
+            state = self._transition(state, WorkflowStep.CLASSIFIED)
+            state = self._transition(state, WorkflowStep.POLICY_CHECKED)
+
+            if prediction.score < self.MIN_TOOL_CONFIDENCE:
+                state = self._transition(state, WorkflowStep.SKIPPED)
+                state = self._transition(state, WorkflowStep.COMPLETED)
+                return self._result(
+                    state=state,
+                    prediction=prediction,
+                    skipped_reason=(
+                        f"prediction confidence {prediction.score:.3f} is below "
+                        f"tool threshold {self.MIN_TOOL_CONFIDENCE:.3f}"
+                    ),
+                )
+
+            tool_name = self.TOOL_BY_LABEL.get(prediction.label)
+            if tool_name is None:
+                state = self._transition(state, WorkflowStep.SKIPPED)
+                state = self._transition(state, WorkflowStep.COMPLETED)
+                return self._result(
+                    state=state,
+                    prediction=prediction,
+                    skipped_reason=(
+                        "no diagnostic tool configured for label: "
+                        f"{prediction.label}"
+                    ),
+                )
+
+            tool_result = self._executor.execute(
+                ToolCall(name=tool_name, arguments={})
+            )
+            execution = ToolExecution.create(
+                incident_id=prediction.incident_id,
+                prediction_id=prediction.id,
+                tool_name=tool_result.tool_name,
+                status=tool_result.status.value,
+                output=tool_result.output,
+                error=tool_result.error,
+                latency_ms=tool_result.latency_ms,
+                attempts=tool_result.attempts,
+            )
+            self._executions.add(execution)
+            state = self._transition(state, WorkflowStep.TOOL_EXECUTED)
+            state = self._transition(state, WorkflowStep.COMPLETED)
+            return self._result(
+                state=state,
+                prediction=prediction,
+                tool_result=tool_result,
+                tool_execution_id=execution.id,
+            )
+        except Exception:
+            self._transition(state, WorkflowStep.FAILED)
+            raise
