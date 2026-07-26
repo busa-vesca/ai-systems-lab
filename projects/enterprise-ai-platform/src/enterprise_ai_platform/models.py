@@ -1,7 +1,15 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import CheckConstraint, DateTime, Float, ForeignKey, String, Text
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -102,5 +110,41 @@ class ToolExecutionRecord(Base):
     latency_ms: Mapped[float] = mapped_column(Float, nullable=False)
     attempts: Mapped[int] = mapped_column(nullable=False)
     created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+
+
+class WorkflowCheckpointRecord(Base):
+    __tablename__ = "workflow_checkpoints"
+    __table_args__ = (
+        CheckConstraint(
+            "version >= 1",
+            name="ck_workflow_checkpoints_version",
+        ),
+        CheckConstraint(
+            "step IN ("
+            "'received', 'classified', 'policy_checked', "
+            "'awaiting_approval', 'approved', 'tool_executed', "
+            "'skipped', 'completed', 'failed'"
+            ")",
+            name="ck_workflow_checkpoints_step",
+        ),
+    )
+
+    run_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True), primary_key=True
+    )
+    version: Mapped[int] = mapped_column(Integer, primary_key=True)
+    incident_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("incidents.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    step: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, index=True
     )

@@ -14,12 +14,15 @@ from enterprise_ai_platform.models import (
     IncidentRecord,
     ModelPredictionRecord,
     ToolExecutionRecord,
+    WorkflowCheckpointRecord,
 )
 from enterprise_ai_platform.postgres_repository import (
     PostgreSQLIncidentRepository,
     PostgreSQLPredictionRepository,
     PostgreSQLToolExecutionRepository,
+    PostgreSQLWorkflowCheckpointRepository,
 )
+from enterprise_ai_platform.workflow import WorkflowState, WorkflowStep
 
 
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -128,6 +131,31 @@ def test_postgres_repository_persists_tool_execution() -> None:
             session.execute(
                 delete(ModelPredictionRecord).where(
                     ModelPredictionRecord.id == prediction.id
+                )
+            )
+            session.execute(
+                delete(IncidentRecord).where(IncidentRecord.id == incident.id)
+            )
+
+
+def test_postgres_repository_restores_latest_workflow_checkpoint() -> None:
+    assert DATABASE_URL is not None
+    session_factory = create_session_factory(DATABASE_URL)
+    incident = Incident.create(title="Database alert", description="Timeout")
+    received = WorkflowState.start(incident_id=incident.id)
+    classified = received.transition_to(WorkflowStep.CLASSIFIED)
+    try:
+        PostgreSQLIncidentRepository(session_factory).add(incident)
+        repository = PostgreSQLWorkflowCheckpointRepository(session_factory)
+        repository.add(received)
+        repository.add(classified)
+
+        assert repository.get_latest(received.run_id) == classified
+    finally:
+        with session_factory.begin() as session:
+            session.execute(
+                delete(WorkflowCheckpointRecord).where(
+                    WorkflowCheckpointRecord.run_id == received.run_id
                 )
             )
             session.execute(

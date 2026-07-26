@@ -2,8 +2,12 @@ from uuid import uuid4
 
 import pytest
 
+from enterprise_ai_platform.repository import (
+    InMemoryWorkflowCheckpointRepository,
+)
 from enterprise_ai_platform.workflow import (
     InvalidWorkflowTransitionError,
+    WorkflowCheckpointConflictError,
     WorkflowState,
     WorkflowStep,
 )
@@ -56,3 +60,23 @@ def test_invalid_transition_is_rejected() -> None:
 
     with pytest.raises(InvalidWorkflowTransitionError):
         state.transition_to(WorkflowStep.COMPLETED)
+
+
+def test_checkpoint_repository_returns_latest_version() -> None:
+    repository = InMemoryWorkflowCheckpointRepository()
+    received = WorkflowState.start(incident_id=uuid4())
+    classified = received.transition_to(WorkflowStep.CLASSIFIED)
+
+    repository.add(received)
+    repository.add(classified)
+
+    assert repository.get_latest(received.run_id) == classified
+
+
+def test_duplicate_checkpoint_version_is_rejected() -> None:
+    repository = InMemoryWorkflowCheckpointRepository()
+    state = WorkflowState.start(incident_id=uuid4())
+    repository.add(state)
+
+    with pytest.raises(WorkflowCheckpointConflictError):
+        repository.add(state)

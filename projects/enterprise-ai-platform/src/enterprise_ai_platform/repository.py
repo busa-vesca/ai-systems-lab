@@ -4,6 +4,7 @@ from typing import Protocol
 from uuid import UUID
 
 from .domain import Incident, ModelPrediction, ToolExecution
+from .workflow import WorkflowCheckpointConflictError, WorkflowState
 
 
 class IncidentRepository(Protocol):
@@ -24,6 +25,12 @@ class PredictionRepository(Protocol):
 
 class ToolExecutionRepository(Protocol):
     def add(self, execution: ToolExecution) -> None: ...
+
+
+class WorkflowCheckpointRepository(Protocol):
+    def add(self, state: WorkflowState) -> None: ...
+
+    def get_latest(self, run_id: UUID) -> WorkflowState | None: ...
 
 
 class InMemoryIncidentRepository:
@@ -70,3 +77,28 @@ class InMemoryToolExecutionRepository:
     def add(self, execution: ToolExecution) -> None:
         with self._lock:
             self._executions[execution.id] = execution
+
+
+class InMemoryWorkflowCheckpointRepository:
+    def __init__(self) -> None:
+        self._checkpoints: dict[tuple[UUID, int], WorkflowState] = {}
+        self._lock = Lock()
+
+    def add(self, state: WorkflowState) -> None:
+        key = (state.run_id, state.version)
+        with self._lock:
+            if key in self._checkpoints:
+                raise WorkflowCheckpointConflictError(
+                    f"workflow checkpoint {state.run_id} version "
+                    f"{state.version} already exists"
+                )
+            self._checkpoints[key] = state
+
+    def get_latest(self, run_id: UUID) -> WorkflowState | None:
+        with self._lock:
+            states = [
+                state
+                for (stored_run_id, _), state in self._checkpoints.items()
+                if stored_run_id == run_id
+            ]
+            return max(states, key=lambda state: state.version, default=None)

@@ -57,6 +57,10 @@ class InvalidWorkflowTransitionError(Exception):
     """The requested workflow transition is not allowed."""
 
 
+class WorkflowCheckpointConflictError(Exception):
+    """The workflow checkpoint version has already been saved."""
+
+
 @dataclass(frozen=True, slots=True)
 class WorkflowState:
     run_id: UUID

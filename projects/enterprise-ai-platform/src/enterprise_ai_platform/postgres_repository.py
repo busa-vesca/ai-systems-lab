@@ -2,6 +2,7 @@ from collections.abc import Iterable
 from uuid import UUID
 
 from sqlalchemy import select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from .database import session_scope
@@ -10,6 +11,12 @@ from .models import (
     IncidentRecord,
     ModelPredictionRecord,
     ToolExecutionRecord,
+    WorkflowCheckpointRecord,
+)
+from .workflow import (
+    WorkflowCheckpointConflictError,
+    WorkflowState,
+    WorkflowStep,
 )
 
 
@@ -112,4 +119,53 @@ class PostgreSQLToolExecutionRepository:
                     attempts=execution.attempts,
                     created_at=execution.created_at,
                 )
+            )
+
+
+def _checkpoint_to_domain(
+    record: WorkflowCheckpointRecord,
+) -> WorkflowState:
+    return WorkflowState(
+        run_id=record.run_id,
+        incident_id=record.incident_id,
+        step=WorkflowStep(record.step),
+        version=record.version,
+        created_at=record.created_at,
+        updated_at=record.updated_at,
+    )
+
+
+class PostgreSQLWorkflowCheckpointRepository:
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        self._session_factory = session_factory
+
+    def add(self, state: WorkflowState) -> None:
+        try:
+            with session_scope(self._session_factory) as session:
+                session.add(
+                    WorkflowCheckpointRecord(
+                        run_id=state.run_id,
+                        incident_id=state.incident_id,
+                        step=state.step.value,
+                        version=state.version,
+                        created_at=state.created_at,
+                        updated_at=state.updated_at,
+                    )
+                )
+        except IntegrityError as error:
+            raise WorkflowCheckpointConflictError(
+                f"workflow checkpoint {state.run_id} version "
+                f"{state.version} already exists"
+            ) from error
+
+    def get_latest(self, run_id: UUID) -> WorkflowState | None:
+        with session_scope(self._session_factory) as session:
+            record = session.scalar(
+                select(WorkflowCheckpointRecord)
+                .where(WorkflowCheckpointRecord.run_id == run_id)
+                .order_by(WorkflowCheckpointRecord.version.desc())
+                .limit(1)
+            )
+            return (
+                _checkpoint_to_domain(record) if record is not None else None
             )
