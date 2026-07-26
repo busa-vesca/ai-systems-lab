@@ -30,6 +30,34 @@ def _to_domain(record: IncidentRecord) -> Incident:
     )
 
 
+def _prediction_to_domain(record: ModelPredictionRecord) -> ModelPrediction:
+    return ModelPrediction(
+        id=record.id,
+        incident_id=record.incident_id,
+        label=record.label,
+        score=record.score,
+        model_id=record.model_id,
+        model_revision=record.model_revision,
+        latency_ms=record.latency_ms,
+        created_at=record.created_at,
+    )
+
+
+def _execution_to_domain(record: ToolExecutionRecord) -> ToolExecution:
+    return ToolExecution(
+        id=record.id,
+        incident_id=record.incident_id,
+        prediction_id=record.prediction_id,
+        tool_name=record.tool_name,
+        status=record.status,
+        output=record.output,
+        error=record.error,
+        latency_ms=record.latency_ms,
+        attempts=record.attempts,
+        created_at=record.created_at,
+    )
+
+
 class PostgreSQLIncidentRepository:
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
         self._session_factory = session_factory
@@ -99,6 +127,13 @@ class PostgreSQLPredictionRepository:
                 )
             )
 
+    def get(self, prediction_id: UUID) -> ModelPrediction | None:
+        with session_scope(self._session_factory) as session:
+            record = session.get(ModelPredictionRecord, prediction_id)
+            return (
+                _prediction_to_domain(record) if record is not None else None
+            )
+
 
 class PostgreSQLToolExecutionRepository:
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
@@ -121,6 +156,11 @@ class PostgreSQLToolExecutionRepository:
                 )
             )
 
+    def get(self, execution_id: UUID) -> ToolExecution | None:
+        with session_scope(self._session_factory) as session:
+            record = session.get(ToolExecutionRecord, execution_id)
+            return _execution_to_domain(record) if record is not None else None
+
 
 def _checkpoint_to_domain(
     record: WorkflowCheckpointRecord,
@@ -132,6 +172,9 @@ def _checkpoint_to_domain(
         version=record.version,
         created_at=record.created_at,
         updated_at=record.updated_at,
+        prediction_id=record.prediction_id,
+        tool_execution_id=record.tool_execution_id,
+        skipped_reason=record.skipped_reason,
     )
 
 
@@ -150,6 +193,9 @@ class PostgreSQLWorkflowCheckpointRepository:
                         version=state.version,
                         created_at=state.created_at,
                         updated_at=state.updated_at,
+                        prediction_id=state.prediction_id,
+                        tool_execution_id=state.tool_execution_id,
+                        skipped_reason=state.skipped_reason,
                     )
                 )
         except IntegrityError as error:

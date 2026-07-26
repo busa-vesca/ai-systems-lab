@@ -1,14 +1,20 @@
 from fastapi.testclient import TestClient
 
 from enterprise_ai_platform.api import create_app
-from enterprise_ai_platform.domain import ModelInferenceError
+from enterprise_ai_platform.domain import ModelInferenceError, ModelPrediction
 from enterprise_ai_platform.inference import ClassificationResult, IncidentClassifier
-from enterprise_ai_platform.repository import InMemoryPredictionRepository
+from enterprise_ai_platform.repository import (
+    InMemoryPredictionRepository,
+    InMemoryToolExecutionRepository,
+    InMemoryWorkflowCheckpointRepository,
+)
 from enterprise_ai_platform.service import (
     IncidentClassificationService,
+    IncidentDiagnosisService,
     IncidentService,
 )
 from enterprise_ai_platform.tools import SafeToolExecutor
+from enterprise_ai_platform.workflow import WorkflowState, WorkflowStep
 
 
 class FakeClassifier:
@@ -237,3 +243,48 @@ def test_low_confidence_prediction_does_not_run_tool() -> None:
     )
     assert response.json()["workflow_step"] == "completed"
     assert response.json()["workflow_version"] == 5
+
+
+def test_workflow_resumes_after_policy_checkpoint_without_reclassification() -> None:
+    incidents = IncidentService()
+    incident = incidents.create(title="Database alert", description="Timeout")
+    predictions = InMemoryPredictionRepository()
+    prediction = ModelPrediction.create(
+        incident_id=incident.id,
+        label="database",
+        score=0.91,
+        model_id="fake/model",
+        model_revision="test-revision",
+        latency_ms=12.5,
+    )
+    predictions.add(prediction)
+    checkpoints = InMemoryWorkflowCheckpointRepository()
+    state = WorkflowState.start(incident_id=incident.id)
+    checkpoints.add(state)
+    state = state.transition_to(
+        WorkflowStep.CLASSIFIED,
+        prediction_id=prediction.id,
+    )
+    checkpoints.add(state)
+    state = state.transition_to(WorkflowStep.POLICY_CHECKED)
+    checkpoints.add(state)
+    executions = InMemoryToolExecutionRepository()
+    diagnosis = IncidentDiagnosisService(
+        classification=IncidentClassificationService(
+            incidents=incidents,
+            classifier=FailingClassifier(),
+            predictions=predictions,
+        ),
+        executor=SafeToolExecutor((FakeDatabaseHealthTool(),)),
+        executions=executions,
+        checkpoints=checkpoints,
+        predictions=predictions,
+    )
+
+    result = diagnosis.resume(state.run_id)
+
+    assert result.workflow_step is WorkflowStep.COMPLETED
+    assert result.workflow_version == 5
+    assert result.prediction.id == prediction.id
+    assert result.tool_result is not None
+    assert result.tool_result.output == {"database_available": True}

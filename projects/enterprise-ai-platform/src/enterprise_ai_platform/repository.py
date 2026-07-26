@@ -22,9 +22,13 @@ class IncidentRepository(Protocol):
 class PredictionRepository(Protocol):
     def add(self, prediction: ModelPrediction) -> None: ...
 
+    def get(self, prediction_id: UUID) -> ModelPrediction | None: ...
+
 
 class ToolExecutionRepository(Protocol):
     def add(self, execution: ToolExecution) -> None: ...
+
+    def get(self, execution_id: UUID) -> ToolExecution | None: ...
 
 
 class WorkflowCheckpointRepository(Protocol):
@@ -68,6 +72,10 @@ class InMemoryPredictionRepository:
         with self._lock:
             self._predictions[prediction.id] = prediction
 
+    def get(self, prediction_id: UUID) -> ModelPrediction | None:
+        with self._lock:
+            return self._predictions.get(prediction_id)
+
 
 class InMemoryToolExecutionRepository:
     def __init__(self) -> None:
@@ -77,6 +85,10 @@ class InMemoryToolExecutionRepository:
     def add(self, execution: ToolExecution) -> None:
         with self._lock:
             self._executions[execution.id] = execution
+
+    def get(self, execution_id: UUID) -> ToolExecution | None:
+        with self._lock:
+            return self._executions.get(execution_id)
 
 
 class InMemoryWorkflowCheckpointRepository:

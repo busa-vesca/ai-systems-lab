@@ -17,8 +17,18 @@ from .repository import (
     ToolExecutionRepository,
     WorkflowCheckpointRepository,
 )
-from .tools import SafeToolExecutor, ToolCall, ToolResult
-from .workflow import WorkflowState, WorkflowStep
+from .tools import (
+    SafeToolExecutor,
+    ToolCall,
+    ToolExecutionStatus,
+    ToolResult,
+)
+from .workflow import (
+    WorkflowCannotResumeError,
+    WorkflowRunNotFoundError,
+    WorkflowState,
+    WorkflowStep,
+)
 
 
 class IncidentService:
@@ -106,18 +116,28 @@ class IncidentDiagnosisService:
         executor: SafeToolExecutor,
         executions: ToolExecutionRepository,
         checkpoints: WorkflowCheckpointRepository,
+        predictions: PredictionRepository,
     ) -> None:
         self._classification = classification
         self._executor = executor
         self._executions = executions
         self._checkpoints = checkpoints
+        self._predictions = predictions
 
     def _transition(
         self,
         state: WorkflowState,
         step: WorkflowStep,
+        prediction_id: UUID | None = None,
+        tool_execution_id: UUID | None = None,
+        skipped_reason: str | None = None,
     ) -> WorkflowState:
-        next_state = state.transition_to(step)
+        next_state = state.transition_to(
+            step,
+            prediction_id=prediction_id,
+            tool_execution_id=tool_execution_id,
+            skipped_reason=skipped_reason,
+        )
         self._checkpoints.add(next_state)
         return next_state
 
@@ -143,58 +163,130 @@ class IncidentDiagnosisService:
     def diagnose(self, incident_id: UUID) -> IncidentDiagnosis:
         state = WorkflowState.start(incident_id=incident_id)
         self._checkpoints.add(state)
-        try:
-            prediction = self._classification.classify(incident_id)
-            state = self._transition(state, WorkflowStep.CLASSIFIED)
-            state = self._transition(state, WorkflowStep.POLICY_CHECKED)
+        return self._continue(state)
 
-            if prediction.score < self.MIN_TOOL_CONFIDENCE:
-                state = self._transition(state, WorkflowStep.SKIPPED)
-                state = self._transition(state, WorkflowStep.COMPLETED)
-                return self._result(
-                    state=state,
-                    prediction=prediction,
-                    skipped_reason=(
+    def resume(self, run_id: UUID) -> IncidentDiagnosis:
+        state = self._checkpoints.get_latest(run_id)
+        if state is None:
+            raise WorkflowRunNotFoundError(
+                f"workflow run {run_id} was not found"
+            )
+        if state.step is WorkflowStep.FAILED:
+            raise WorkflowCannotResumeError(
+                f"workflow run {run_id} is already failed"
+            )
+        return self._continue(state)
+
+    def _require_prediction(self, state: WorkflowState) -> ModelPrediction:
+        if state.prediction_id is None:
+            raise WorkflowCannotResumeError(
+                f"workflow run {state.run_id} has no saved prediction"
+            )
+        prediction = self._predictions.get(state.prediction_id)
+        if prediction is None:
+            raise WorkflowCannotResumeError(
+                f"prediction {state.prediction_id} was not found"
+            )
+        return prediction
+
+    def _saved_tool_result(self, state: WorkflowState) -> ToolResult | None:
+        if state.tool_execution_id is None:
+            return None
+        execution = self._executions.get(state.tool_execution_id)
+        if execution is None:
+            raise WorkflowCannotResumeError(
+                f"tool execution {state.tool_execution_id} was not found"
+            )
+        return ToolResult(
+            tool_name=execution.tool_name,
+            status=ToolExecutionStatus(execution.status),
+            output=execution.output,
+            error=execution.error,
+            latency_ms=execution.latency_ms,
+            attempts=execution.attempts,
+        )
+
+    def _continue(self, state: WorkflowState) -> IncidentDiagnosis:
+        try:
+            if state.step is WorkflowStep.RECEIVED:
+                prediction = self._classification.classify(state.incident_id)
+                state = self._transition(
+                    state,
+                    WorkflowStep.CLASSIFIED,
+                    prediction_id=prediction.id,
+                )
+            else:
+                prediction = self._require_prediction(state)
+
+            if state.step is WorkflowStep.CLASSIFIED:
+                state = self._transition(state, WorkflowStep.POLICY_CHECKED)
+
+            if state.step is WorkflowStep.POLICY_CHECKED:
+                if prediction.score < self.MIN_TOOL_CONFIDENCE:
+                    reason = (
                         f"prediction confidence {prediction.score:.3f} is below "
                         f"tool threshold {self.MIN_TOOL_CONFIDENCE:.3f}"
-                    ),
-                )
-
-            tool_name = self.TOOL_BY_LABEL.get(prediction.label)
-            if tool_name is None:
-                state = self._transition(state, WorkflowStep.SKIPPED)
-                state = self._transition(state, WorkflowStep.COMPLETED)
-                return self._result(
-                    state=state,
-                    prediction=prediction,
-                    skipped_reason=(
+                    )
+                    state = self._transition(
+                        state,
+                        WorkflowStep.SKIPPED,
+                        skipped_reason=reason,
+                    )
+                elif (
+                    tool_name := self.TOOL_BY_LABEL.get(prediction.label)
+                ) is None:
+                    reason = (
                         "no diagnostic tool configured for label: "
                         f"{prediction.label}"
-                    ),
+                    )
+                    state = self._transition(
+                        state,
+                        WorkflowStep.SKIPPED,
+                        skipped_reason=reason,
+                    )
+                else:
+                    tool_result = self._executor.execute(
+                        ToolCall(name=tool_name, arguments={})
+                    )
+                    execution = ToolExecution.create(
+                        incident_id=prediction.incident_id,
+                        prediction_id=prediction.id,
+                        tool_name=tool_result.tool_name,
+                        status=tool_result.status.value,
+                        output=tool_result.output,
+                        error=tool_result.error,
+                        latency_ms=tool_result.latency_ms,
+                        attempts=tool_result.attempts,
+                    )
+                    self._executions.add(execution)
+                    state = self._transition(
+                        state,
+                        WorkflowStep.TOOL_EXECUTED,
+                        tool_execution_id=execution.id,
+                    )
+
+            if state.step in {
+                WorkflowStep.TOOL_EXECUTED,
+                WorkflowStep.SKIPPED,
+            }:
+                state = self._transition(state, WorkflowStep.COMPLETED)
+
+            if state.step is not WorkflowStep.COMPLETED:
+                raise WorkflowCannotResumeError(
+                    f"cannot continue workflow from {state.step}"
                 )
 
-            tool_result = self._executor.execute(
-                ToolCall(name=tool_name, arguments={})
-            )
-            execution = ToolExecution.create(
-                incident_id=prediction.incident_id,
-                prediction_id=prediction.id,
-                tool_name=tool_result.tool_name,
-                status=tool_result.status.value,
-                output=tool_result.output,
-                error=tool_result.error,
-                latency_ms=tool_result.latency_ms,
-                attempts=tool_result.attempts,
-            )
-            self._executions.add(execution)
-            state = self._transition(state, WorkflowStep.TOOL_EXECUTED)
-            state = self._transition(state, WorkflowStep.COMPLETED)
             return self._result(
                 state=state,
                 prediction=prediction,
-                tool_result=tool_result,
-                tool_execution_id=execution.id,
+                tool_result=self._saved_tool_result(state),
+                tool_execution_id=state.tool_execution_id,
+                skipped_reason=state.skipped_reason,
             )
         except Exception:
-            self._transition(state, WorkflowStep.FAILED)
+            if state.step not in {
+                WorkflowStep.COMPLETED,
+                WorkflowStep.FAILED,
+            }:
+                self._transition(state, WorkflowStep.FAILED)
             raise

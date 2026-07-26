@@ -148,3 +148,14 @@ class WorkflowCheckpointRecord(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, index=True
     )
+    prediction_id: Mapped[UUID | None] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("model_predictions.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    tool_execution_id: Mapped[UUID | None] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("tool_executions.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    skipped_reason: Mapped[str | None] = mapped_column(Text, nullable=True)

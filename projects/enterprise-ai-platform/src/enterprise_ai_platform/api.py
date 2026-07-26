@@ -40,6 +40,7 @@ from .tools import (
     ToolNotAllowedError,
 )
 from .workflow import WorkflowStep
+from .workflow import WorkflowCannotResumeError, WorkflowRunNotFoundError
 
 
 class IncidentCreate(BaseModel):
@@ -147,6 +148,7 @@ def create_app(
         executor=tool_executor or default_tool_executor,
         executions=tool_execution_repository,
         checkpoints=workflow_checkpoint_repository,
+        predictions=prediction_repository,
     )
 
     def get_service(request: Request) -> IncidentService:
@@ -186,6 +188,18 @@ def create_app(
             status_code=503,
             content={"detail": "diagnostic tool is not configured"},
         )
+
+    @app.exception_handler(WorkflowRunNotFoundError)
+    async def handle_workflow_not_found(
+        _request: Request, error: WorkflowRunNotFoundError
+    ) -> JSONResponse:
+        return JSONResponse(status_code=404, content={"detail": str(error)})
+
+    @app.exception_handler(WorkflowCannotResumeError)
+    async def handle_workflow_cannot_resume(
+        _request: Request, error: WorkflowCannotResumeError
+    ) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(error)})
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -263,6 +277,16 @@ def create_app(
         diagnosis: IncidentDiagnosisService = Depends(get_diagnosis_service),
     ) -> IncidentDiagnosis:
         return diagnosis.diagnose(incident_id)
+
+    @app.post(
+        "/workflows/{run_id}/resume",
+        response_model=IncidentDiagnosisResponse,
+    )
+    def resume_workflow(
+        run_id: UUID,
+        diagnosis: IncidentDiagnosisService = Depends(get_diagnosis_service),
+    ) -> IncidentDiagnosis:
+        return diagnosis.resume(run_id)
 
     return app
 

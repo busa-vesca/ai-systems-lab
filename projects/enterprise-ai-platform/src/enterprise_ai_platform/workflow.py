@@ -61,6 +61,14 @@ class WorkflowCheckpointConflictError(Exception):
     """The workflow checkpoint version has already been saved."""
 
 
+class WorkflowRunNotFoundError(Exception):
+    """The requested workflow run does not exist."""
+
+
+class WorkflowCannotResumeError(Exception):
+    """The workflow cannot be resumed from its current state."""
+
+
 @dataclass(frozen=True, slots=True)
 class WorkflowState:
     run_id: UUID
@@ -69,6 +77,9 @@ class WorkflowState:
     version: int
     created_at: datetime
     updated_at: datetime
+    prediction_id: UUID | None = None
+    tool_execution_id: UUID | None = None
+    skipped_reason: str | None = None
 
     @classmethod
     def start(cls, *, incident_id: UUID) -> "WorkflowState":
@@ -82,7 +93,14 @@ class WorkflowState:
             updated_at=now,
         )
 
-    def transition_to(self, step: WorkflowStep) -> "WorkflowState":
+    def transition_to(
+        self,
+        step: WorkflowStep,
+        *,
+        prediction_id: UUID | None = None,
+        tool_execution_id: UUID | None = None,
+        skipped_reason: str | None = None,
+    ) -> "WorkflowState":
         if step not in ALLOWED_WORKFLOW_TRANSITIONS[self.step]:
             raise InvalidWorkflowTransitionError(
                 f"cannot transition workflow from {self.step} to {step}"
@@ -92,4 +110,7 @@ class WorkflowState:
             step=step,
             version=self.version + 1,
             updated_at=datetime.now(UTC),
+            prediction_id=prediction_id or self.prediction_id,
+            tool_execution_id=tool_execution_id or self.tool_execution_id,
+            skipped_reason=skipped_reason or self.skipped_reason,
         )
