@@ -60,6 +60,7 @@ def _execution_to_domain(record: ToolExecutionRecord) -> ToolExecution:
         error=record.error,
         latency_ms=record.latency_ms,
         attempts=record.attempts,
+        idempotency_key=record.idempotency_key,
         created_at=record.created_at,
     )
 
@@ -145,8 +146,16 @@ class PostgreSQLToolExecutionRepository:
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
         self._session_factory = session_factory
 
-    def add(self, execution: ToolExecution) -> None:
+    def add(self, execution: ToolExecution) -> ToolExecution:
         with session_scope(self._session_factory) as session:
+            existing = session.scalar(
+                select(ToolExecutionRecord).where(
+                    ToolExecutionRecord.idempotency_key
+                    == execution.idempotency_key
+                )
+            )
+            if existing is not None:
+                return _execution_to_domain(existing)
             session.add(
                 ToolExecutionRecord(
                     id=execution.id,
@@ -158,13 +167,24 @@ class PostgreSQLToolExecutionRepository:
                     error=execution.error,
                     latency_ms=execution.latency_ms,
                     attempts=execution.attempts,
+                    idempotency_key=execution.idempotency_key,
                     created_at=execution.created_at,
                 )
             )
+            return execution
 
     def get(self, execution_id: UUID) -> ToolExecution | None:
         with session_scope(self._session_factory) as session:
             record = session.get(ToolExecutionRecord, execution_id)
+            return _execution_to_domain(record) if record is not None else None
+
+    def get_by_idempotency_key(self, key: str) -> ToolExecution | None:
+        with session_scope(self._session_factory) as session:
+            record = session.scalar(
+                select(ToolExecutionRecord).where(
+                    ToolExecutionRecord.idempotency_key == key
+                )
+            )
             return _execution_to_domain(record) if record is not None else None
 
 

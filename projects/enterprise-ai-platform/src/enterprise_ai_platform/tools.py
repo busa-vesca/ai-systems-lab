@@ -6,7 +6,7 @@ from time import sleep
 from time import perf_counter
 from typing import Any, Protocol
 
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
@@ -25,6 +25,7 @@ class ToolCall(BaseModel):
 
     name: str
     arguments: dict[str, Any]
+    idempotency_key: str = Field(min_length=1, max_length=200)
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,6 +36,7 @@ class ToolResult:
     error: str | None
     latency_ms: float
     attempts: int
+    idempotency_key: str
 
 
 class ToolNotAllowedError(Exception):
@@ -46,7 +48,12 @@ class Tool(Protocol):
     retry_safe: bool
     requires_approval: bool
 
-    def run(self, arguments: dict[str, Any]) -> dict[str, Any]: ...
+    def run(
+        self,
+        arguments: dict[str, Any],
+        *,
+        idempotency_key: str,
+    ) -> dict[str, Any]: ...
 
 
 class DatabaseHealthArguments(BaseModel):
@@ -61,7 +68,13 @@ class DatabaseHealthTool:
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
         self._session_factory = session_factory
 
-    def run(self, arguments: dict[str, Any]) -> dict[str, Any]:
+    def run(
+        self,
+        arguments: dict[str, Any],
+        *,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        del idempotency_key
         DatabaseHealthArguments.model_validate(arguments)
         with self._session_factory() as session:
             database_available = session.scalar(text("SELECT 1")) == 1
@@ -109,7 +122,11 @@ class SafeToolExecutor:
         error_message = "tool execution failed"
 
         for attempt in range(1, attempt_limit + 1):
-            future = self._worker_pool.submit(tool.run, call.arguments)
+            future = self._worker_pool.submit(
+                tool.run,
+                call.arguments,
+                idempotency_key=call.idempotency_key,
+            )
             try:
                 output = future.result(timeout=self._timeout_seconds)
                 return ToolResult(
@@ -119,6 +136,7 @@ class SafeToolExecutor:
                     error=None,
                     latency_ms=(perf_counter() - started_at) * 1_000,
                     attempts=attempt,
+                    idempotency_key=call.idempotency_key,
                 )
             except ValidationError:
                 future.cancel()
@@ -155,4 +173,5 @@ class SafeToolExecutor:
             error=error_message,
             latency_ms=(perf_counter() - started_at) * 1_000,
             attempts=attempt,
+            idempotency_key=call.idempotency_key,
         )

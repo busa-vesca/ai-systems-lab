@@ -113,11 +113,25 @@ def test_postgres_repository_persists_tool_execution() -> None:
         error=None,
         latency_ms=1.4,
         attempts=1,
+        idempotency_key=f"test:{prediction.id}:database-health",
     )
     try:
         PostgreSQLIncidentRepository(session_factory).add(incident)
         PostgreSQLPredictionRepository(session_factory).add(prediction)
-        PostgreSQLToolExecutionRepository(session_factory).add(execution)
+        repository = PostgreSQLToolExecutionRepository(session_factory)
+        assert repository.add(execution) == execution
+        duplicate = ToolExecution.create(
+            incident_id=incident.id,
+            prediction_id=prediction.id,
+            tool_name="check_database_health",
+            status="succeeded",
+            output={"database_available": True},
+            error=None,
+            latency_ms=2.0,
+            attempts=1,
+            idempotency_key=execution.idempotency_key,
+        )
+        assert repository.add(duplicate) == execution
 
         with session_factory() as session:
             stored = session.get(ToolExecutionRecord, execution.id)
@@ -127,6 +141,7 @@ def test_postgres_repository_persists_tool_execution() -> None:
             assert stored.tool_name == "check_database_health"
             assert stored.output == {"database_available": True}
             assert stored.attempts == 1
+            assert stored.idempotency_key == execution.idempotency_key
     finally:
         with session_factory.begin() as session:
             session.execute(

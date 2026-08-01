@@ -9,6 +9,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
@@ -76,6 +77,10 @@ class ToolExecutionRecord(Base):
             "status IN ('succeeded', 'failed')",
             name="ck_tool_executions_status",
         ),
+        UniqueConstraint(
+            "idempotency_key",
+            name="uq_tool_executions_idempotency_key",
+        ),
         CheckConstraint(
             "latency_ms >= 0",
             name="ck_tool_executions_latency",
@@ -109,6 +114,9 @@ class ToolExecutionRecord(Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     latency_ms: Mapped[float] = mapped_column(Float, nullable=False)
     attempts: Mapped[int] = mapped_column(nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(
+        String(200), nullable=False
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, index=True
     )

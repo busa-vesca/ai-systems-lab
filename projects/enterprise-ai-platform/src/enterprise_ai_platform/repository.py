@@ -31,9 +31,11 @@ class PredictionRepository(Protocol):
 
 
 class ToolExecutionRepository(Protocol):
-    def add(self, execution: ToolExecution) -> None: ...
+    def add(self, execution: ToolExecution) -> ToolExecution: ...
 
     def get(self, execution_id: UUID) -> ToolExecution | None: ...
+
+    def get_by_idempotency_key(self, key: str) -> ToolExecution | None: ...
 
 
 class WorkflowCheckpointRepository(Protocol):
@@ -89,15 +91,31 @@ class InMemoryPredictionRepository:
 class InMemoryToolExecutionRepository:
     def __init__(self) -> None:
         self._executions: dict[UUID, ToolExecution] = {}
+        self._by_idempotency_key: dict[str, UUID] = {}
         self._lock = Lock()
 
-    def add(self, execution: ToolExecution) -> None:
+    def add(self, execution: ToolExecution) -> ToolExecution:
         with self._lock:
+            if existing_id := self._by_idempotency_key.get(
+                execution.idempotency_key
+            ):
+                return self._executions[existing_id]
             self._executions[execution.id] = execution
+            self._by_idempotency_key[execution.idempotency_key] = execution.id
+            return execution
 
     def get(self, execution_id: UUID) -> ToolExecution | None:
         with self._lock:
             return self._executions.get(execution_id)
+
+    def get_by_idempotency_key(self, key: str) -> ToolExecution | None:
+        with self._lock:
+            execution_id = self._by_idempotency_key.get(key)
+            return (
+                self._executions.get(execution_id)
+                if execution_id is not None
+                else None
+            )
 
 
 class InMemoryWorkflowCheckpointRepository:

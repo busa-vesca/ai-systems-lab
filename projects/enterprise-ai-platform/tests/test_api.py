@@ -1,7 +1,13 @@
+from uuid import uuid4
+
 from fastapi.testclient import TestClient
 
 from enterprise_ai_platform.api import create_app
-from enterprise_ai_platform.domain import ModelInferenceError, ModelPrediction
+from enterprise_ai_platform.domain import (
+    ModelInferenceError,
+    ModelPrediction,
+    ToolExecution,
+)
 from enterprise_ai_platform.inference import ClassificationResult, IncidentClassifier
 from enterprise_ai_platform.repository import (
     InMemoryPredictionRepository,
@@ -14,7 +20,7 @@ from enterprise_ai_platform.service import (
     IncidentDiagnosisService,
     IncidentService,
 )
-from enterprise_ai_platform.tools import SafeToolExecutor
+from enterprise_ai_platform.tools import SafeToolExecutor, ToolCall
 from enterprise_ai_platform.workflow import WorkflowState, WorkflowStep
 
 
@@ -54,7 +60,13 @@ class FakeDatabaseHealthTool:
     retry_safe = True
     requires_approval = False
 
-    def run(self, _arguments: dict[str, object]) -> dict[str, object]:
+    def run(
+        self,
+        _arguments: dict[str, object],
+        *,
+        idempotency_key: str,
+    ) -> dict[str, object]:
+        del idempotency_key
         return {"database_available": True}
 
 
@@ -196,6 +208,9 @@ def test_database_incident_runs_allowed_diagnostic_tool() -> None:
     assert response.json()["tool_result"]["output"] == {
         "database_available": True
     }
+    assert response.json()["tool_result"]["idempotency_key"].endswith(
+        ":check_database_health"
+    )
     assert response.json()["tool_execution_id"] is not None
     assert response.json()["skipped_reason"] is None
     assert response.json()["workflow_step"] == "completed"
@@ -301,9 +316,17 @@ class FakeSensitiveTool:
 
     def __init__(self) -> None:
         self.calls = 0
+        self._processed_keys: set[str] = set()
 
-    def run(self, _arguments: dict[str, object]) -> dict[str, object]:
-        self.calls += 1
+    def run(
+        self,
+        _arguments: dict[str, object],
+        *,
+        idempotency_key: str,
+    ) -> dict[str, object]:
+        if idempotency_key not in self._processed_keys:
+            self._processed_keys.add(idempotency_key)
+            self.calls += 1
         return {"restart_requested": True}
 
 
@@ -343,4 +366,56 @@ def test_sensitive_tool_waits_for_approval_before_execution() -> None:
     assert completed.approval_required is False
     assert completed.tool_result is not None
     assert completed.tool_result.output == {"restart_requested": True}
+    assert completed.tool_result.idempotency_key == (
+        f"{waiting.workflow_run_id}:restart_service"
+    )
     assert tool.calls == 1
+
+
+def test_sensitive_tool_deduplicates_repeated_idempotency_key() -> None:
+    tool = FakeSensitiveTool()
+    executor = SafeToolExecutor((tool,))
+    call = ToolCall(
+        name="restart_service",
+        arguments={},
+        idempotency_key="workflow-123:restart_service",
+    )
+
+    first = executor.execute(call)
+    second = executor.execute(call)
+
+    assert first.output == second.output
+    assert first.idempotency_key == second.idempotency_key
+    assert tool.calls == 1
+
+
+def test_execution_repository_returns_original_for_duplicate_key() -> None:
+    repository = InMemoryToolExecutionRepository()
+    incident_id = uuid4()
+    prediction_id = uuid4()
+    key = "workflow-123:restart_service"
+    first = ToolExecution.create(
+        incident_id=incident_id,
+        prediction_id=prediction_id,
+        tool_name="restart_service",
+        status="succeeded",
+        output={"restart_requested": True},
+        error=None,
+        latency_ms=2.0,
+        attempts=1,
+        idempotency_key=key,
+    )
+    duplicate = ToolExecution.create(
+        incident_id=incident_id,
+        prediction_id=prediction_id,
+        tool_name="restart_service",
+        status="succeeded",
+        output={"restart_requested": True},
+        error=None,
+        latency_ms=3.0,
+        attempts=1,
+        idempotency_key=key,
+    )
+
+    assert repository.add(first) == first
+    assert repository.add(duplicate) == first

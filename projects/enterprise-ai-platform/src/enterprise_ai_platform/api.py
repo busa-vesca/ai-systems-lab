@@ -90,6 +90,7 @@ class ToolResultResponse(BaseModel):
     error: str | None
     latency_ms: float
     attempts: int
+    idempotency_key: str
 
 
 class IncidentDiagnosisResponse(BaseModel):

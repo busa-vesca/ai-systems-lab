@@ -114,6 +114,7 @@ class ToolExecution:
     error: str | None
     latency_ms: float
     attempts: int
+    idempotency_key: str
     created_at: datetime
 
     @classmethod
@@ -128,6 +129,7 @@ class ToolExecution:
         error: str | None,
         latency_ms: float,
         attempts: int,
+        idempotency_key: str,
     ) -> "ToolExecution":
         if status not in {"succeeded", "failed"}:
             raise ValueError("unsupported tool execution status")
@@ -135,6 +137,8 @@ class ToolExecution:
             raise ValueError("tool execution latency must not be negative")
         if attempts < 1:
             raise ValueError("tool execution attempts must be at least 1")
+        if not idempotency_key.strip():
+            raise ValueError("idempotency key must not be empty")
         return cls(
             id=uuid4(),
             incident_id=incident_id,
@@ -145,5 +149,6 @@ class ToolExecution:
             error=error,
             latency_ms=latency_ms,
             attempts=attempts,
+            idempotency_key=idempotency_key,
             created_at=datetime.now(UTC),
         )

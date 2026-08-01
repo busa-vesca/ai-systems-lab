@@ -30,7 +30,11 @@ def test_database_health_tool_returns_success() -> None:
     )
 
     result = executor.execute(
-        ToolCall(name="check_database_health", arguments={})
+        ToolCall(
+            name="check_database_health",
+            arguments={},
+            idempotency_key="test:database-health",
+        )
     )
 
     assert result.status is ToolExecutionStatus.SUCCEEDED
@@ -48,6 +52,7 @@ def test_database_health_tool_rejects_arguments() -> None:
         ToolCall(
             name="check_database_health",
             arguments={"sql": "DROP TABLE incidents"},
+            idempotency_key="test:invalid-arguments",
         )
     )
 
@@ -61,7 +66,13 @@ def test_executor_rejects_tool_outside_allowlist() -> None:
     executor = SafeToolExecutor(())
 
     with pytest.raises(ToolNotAllowedError):
-        executor.execute(ToolCall(name="run_shell", arguments={}))
+        executor.execute(
+            ToolCall(
+                name="run_shell",
+                arguments={},
+                idempotency_key="test:forbidden",
+            )
+        )
 
 
 def test_unknown_tool_is_not_approved_implicitly() -> None:
@@ -78,7 +89,13 @@ class FlakyTool:
     def __init__(self) -> None:
         self.calls = 0
 
-    def run(self, _arguments: dict[str, object]) -> dict[str, object]:
+    def run(
+        self,
+        _arguments: dict[str, object],
+        *,
+        idempotency_key: str,
+    ) -> dict[str, object]:
+        del idempotency_key
         self.calls += 1
         if self.calls == 1:
             raise SQLAlchemyError("temporary failure")
@@ -89,7 +106,13 @@ class SlowTool:
     name = "slow"
     retry_safe = True
 
-    def run(self, _arguments: dict[str, object]) -> dict[str, object]:
+    def run(
+        self,
+        _arguments: dict[str, object],
+        *,
+        idempotency_key: str,
+    ) -> dict[str, object]:
+        del idempotency_key
         sleep(0.05)
         return {"finished": True}
 
@@ -101,7 +124,13 @@ class UnsafeFailingTool:
     def __init__(self) -> None:
         self.calls = 0
 
-    def run(self, _arguments: dict[str, object]) -> dict[str, object]:
+    def run(
+        self,
+        _arguments: dict[str, object],
+        *,
+        idempotency_key: str,
+    ) -> dict[str, object]:
+        del idempotency_key
         self.calls += 1
         raise SQLAlchemyError("failure")
 
@@ -114,7 +143,13 @@ def test_retry_safe_tool_recovers_on_second_attempt() -> None:
         retry_delay_seconds=0,
     )
 
-    result = executor.execute(ToolCall(name="flaky", arguments={}))
+    result = executor.execute(
+        ToolCall(
+            name="flaky",
+            arguments={},
+            idempotency_key="test:flaky",
+        )
+    )
 
     assert result.status is ToolExecutionStatus.SUCCEEDED
     assert result.output == {"recovered": True}
@@ -129,7 +164,13 @@ def test_slow_tool_returns_controlled_timeout() -> None:
         timeout_seconds=0.01,
     )
 
-    result = executor.execute(ToolCall(name="slow", arguments={}))
+    result = executor.execute(
+        ToolCall(
+            name="slow",
+            arguments={},
+            idempotency_key="test:slow",
+        )
+    )
 
     assert result.status is ToolExecutionStatus.FAILED
     assert result.error == "tool execution timed out"
@@ -144,7 +185,13 @@ def test_non_retry_safe_tool_is_never_repeated() -> None:
         retry_delay_seconds=0,
     )
 
-    result = executor.execute(ToolCall(name="unsafe", arguments={}))
+    result = executor.execute(
+        ToolCall(
+            name="unsafe",
+            arguments={},
+            idempotency_key="test:unsafe",
+        )
+    )
 
     assert result.status is ToolExecutionStatus.FAILED
     assert result.attempts == 1

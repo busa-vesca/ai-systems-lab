@@ -229,6 +229,7 @@ class IncidentDiagnosisService:
             error=execution.error,
             latency_ms=execution.latency_ms,
             attempts=execution.attempts,
+            idempotency_key=execution.idempotency_key,
         )
 
     def _continue(self, state: WorkflowState) -> IncidentDiagnosis:
@@ -284,20 +285,31 @@ class IncidentDiagnosisService:
                 WorkflowStep.APPROVED,
             }:
                 tool_name = self._tool_by_label[prediction.label]
-                tool_result = self._executor.execute(
-                    ToolCall(name=tool_name, arguments={})
+                idempotency_key = f"{state.run_id}:{tool_name}"
+                execution = self._executions.get_by_idempotency_key(
+                    idempotency_key
                 )
-                execution = ToolExecution.create(
-                    incident_id=prediction.incident_id,
-                    prediction_id=prediction.id,
-                    tool_name=tool_result.tool_name,
-                    status=tool_result.status.value,
-                    output=tool_result.output,
-                    error=tool_result.error,
-                    latency_ms=tool_result.latency_ms,
-                    attempts=tool_result.attempts,
-                )
-                self._executions.add(execution)
+                if execution is None:
+                    tool_result = self._executor.execute(
+                        ToolCall(
+                            name=tool_name,
+                            arguments={},
+                            idempotency_key=idempotency_key,
+                        )
+                    )
+                    execution = self._executions.add(
+                        ToolExecution.create(
+                            incident_id=prediction.incident_id,
+                            prediction_id=prediction.id,
+                            tool_name=tool_result.tool_name,
+                            status=tool_result.status.value,
+                            output=tool_result.output,
+                            error=tool_result.error,
+                            latency_ms=tool_result.latency_ms,
+                            attempts=tool_result.attempts,
+                            idempotency_key=tool_result.idempotency_key,
+                        )
+                    )
                 state = self._transition(
                     state,
                     WorkflowStep.TOOL_EXECUTED,
