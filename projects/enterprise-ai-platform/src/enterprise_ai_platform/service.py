@@ -101,6 +101,7 @@ class IncidentDiagnosis:
     workflow_run_id: UUID
     workflow_step: WorkflowStep
     workflow_version: int
+    approval_required: bool
 
 
 class IncidentDiagnosisService:
@@ -117,12 +118,14 @@ class IncidentDiagnosisService:
         executions: ToolExecutionRepository,
         checkpoints: WorkflowCheckpointRepository,
         predictions: PredictionRepository,
+        tool_by_label: dict[str, str] | None = None,
     ) -> None:
         self._classification = classification
         self._executor = executor
         self._executions = executions
         self._checkpoints = checkpoints
         self._predictions = predictions
+        self._tool_by_label = tool_by_label or self.TOOL_BY_LABEL
 
     def _transition(
         self,
@@ -158,6 +161,9 @@ class IncidentDiagnosisService:
             workflow_run_id=state.run_id,
             workflow_step=state.step,
             workflow_version=state.version,
+            approval_required=(
+                state.step is WorkflowStep.AWAITING_APPROVAL
+            ),
         )
 
     def diagnose(self, incident_id: UUID) -> IncidentDiagnosis:
@@ -175,6 +181,19 @@ class IncidentDiagnosisService:
             raise WorkflowCannotResumeError(
                 f"workflow run {run_id} is already failed"
             )
+        return self._continue(state)
+
+    def approve(self, run_id: UUID) -> IncidentDiagnosis:
+        state = self._checkpoints.get_latest(run_id)
+        if state is None:
+            raise WorkflowRunNotFoundError(
+                f"workflow run {run_id} was not found"
+            )
+        if state.step is not WorkflowStep.AWAITING_APPROVAL:
+            raise WorkflowCannotResumeError(
+                f"workflow run {run_id} is not awaiting approval"
+            )
+        state = self._transition(state, WorkflowStep.APPROVED)
         return self._continue(state)
 
     def _require_prediction(self, state: WorkflowState) -> ModelPrediction:
@@ -233,7 +252,7 @@ class IncidentDiagnosisService:
                         skipped_reason=reason,
                     )
                 elif (
-                    tool_name := self.TOOL_BY_LABEL.get(prediction.label)
+                    tool_name := self._tool_by_label.get(prediction.label)
                 ) is None:
                     reason = (
                         "no diagnostic tool configured for label: "
@@ -245,25 +264,39 @@ class IncidentDiagnosisService:
                         skipped_reason=reason,
                     )
                 else:
-                    tool_result = self._executor.execute(
-                        ToolCall(name=tool_name, arguments={})
-                    )
-                    execution = ToolExecution.create(
-                        incident_id=prediction.incident_id,
-                        prediction_id=prediction.id,
-                        tool_name=tool_result.tool_name,
-                        status=tool_result.status.value,
-                        output=tool_result.output,
-                        error=tool_result.error,
-                        latency_ms=tool_result.latency_ms,
-                        attempts=tool_result.attempts,
-                    )
-                    self._executions.add(execution)
-                    state = self._transition(
-                        state,
-                        WorkflowStep.TOOL_EXECUTED,
-                        tool_execution_id=execution.id,
-                    )
+                    if self._executor.requires_approval(tool_name):
+                        state = self._transition(
+                            state,
+                            WorkflowStep.AWAITING_APPROVAL,
+                        )
+
+            if state.step is WorkflowStep.AWAITING_APPROVAL:
+                return self._result(state=state, prediction=prediction)
+
+            if state.step in {
+                WorkflowStep.POLICY_CHECKED,
+                WorkflowStep.APPROVED,
+            }:
+                tool_name = self._tool_by_label[prediction.label]
+                tool_result = self._executor.execute(
+                    ToolCall(name=tool_name, arguments={})
+                )
+                execution = ToolExecution.create(
+                    incident_id=prediction.incident_id,
+                    prediction_id=prediction.id,
+                    tool_name=tool_result.tool_name,
+                    status=tool_result.status.value,
+                    output=tool_result.output,
+                    error=tool_result.error,
+                    latency_ms=tool_result.latency_ms,
+                    attempts=tool_result.attempts,
+                )
+                self._executions.add(execution)
+                state = self._transition(
+                    state,
+                    WorkflowStep.TOOL_EXECUTED,
+                    tool_execution_id=execution.id,
+                )
 
             if state.step in {
                 WorkflowStep.TOOL_EXECUTED,

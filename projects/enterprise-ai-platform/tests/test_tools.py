@@ -64,6 +64,13 @@ def test_executor_rejects_tool_outside_allowlist() -> None:
         executor.execute(ToolCall(name="run_shell", arguments={}))
 
 
+def test_unknown_tool_is_not_approved_implicitly() -> None:
+    executor = SafeToolExecutor(())
+
+    with pytest.raises(ToolNotAllowedError):
+        executor.requires_approval("run_shell")
+
+
 class FlakyTool:
     name = "flaky"
     retry_safe = True

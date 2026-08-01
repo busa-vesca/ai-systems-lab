@@ -51,6 +51,7 @@ class LabelClassifier:
 class FakeDatabaseHealthTool:
     name = "check_database_health"
     retry_safe = True
+    requires_approval = False
 
     def run(self, _arguments: dict[str, object]) -> dict[str, object]:
         return {"database_available": True}
@@ -199,6 +200,7 @@ def test_database_incident_runs_allowed_diagnostic_tool() -> None:
     assert response.json()["workflow_step"] == "completed"
     assert response.json()["workflow_version"] == 5
     assert response.json()["workflow_run_id"] is not None
+    assert response.json()["approval_required"] is False
 
 
 def test_incident_without_configured_diagnostic_tool_is_skipped() -> None:
@@ -288,3 +290,54 @@ def test_workflow_resumes_after_policy_checkpoint_without_reclassification() -> 
     assert result.prediction.id == prediction.id
     assert result.tool_result is not None
     assert result.tool_result.output == {"database_available": True}
+
+
+class FakeSensitiveTool:
+    name = "restart_service"
+    retry_safe = False
+    requires_approval = True
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def run(self, _arguments: dict[str, object]) -> dict[str, object]:
+        self.calls += 1
+        return {"restart_requested": True}
+
+
+def test_sensitive_tool_waits_for_approval_before_execution() -> None:
+    incidents = IncidentService()
+    incident = incidents.create(title="Service failure", description="Restart")
+    predictions = InMemoryPredictionRepository()
+    executions = InMemoryToolExecutionRepository()
+    checkpoints = InMemoryWorkflowCheckpointRepository()
+    tool = FakeSensitiveTool()
+    diagnosis = IncidentDiagnosisService(
+        classification=IncidentClassificationService(
+            incidents=incidents,
+            classifier=LabelClassifier("infrastructure"),
+            predictions=predictions,
+        ),
+        executor=SafeToolExecutor((tool,)),
+        executions=executions,
+        checkpoints=checkpoints,
+        predictions=predictions,
+        tool_by_label={"infrastructure": "restart_service"},
+    )
+
+    waiting = diagnosis.diagnose(incident.id)
+
+    assert waiting.workflow_step is WorkflowStep.AWAITING_APPROVAL
+    assert waiting.workflow_version == 4
+    assert waiting.approval_required is True
+    assert waiting.tool_result is None
+    assert tool.calls == 0
+
+    completed = diagnosis.approve(waiting.workflow_run_id)
+
+    assert completed.workflow_step is WorkflowStep.COMPLETED
+    assert completed.workflow_version == 7
+    assert completed.approval_required is False
+    assert completed.tool_result is not None
+    assert completed.tool_result.output == {"restart_requested": True}
+    assert tool.calls == 1

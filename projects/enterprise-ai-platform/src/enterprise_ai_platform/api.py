@@ -96,6 +96,7 @@ class IncidentDiagnosisResponse(BaseModel):
     workflow_run_id: UUID
     workflow_step: WorkflowStep
     workflow_version: int
+    approval_required: bool
 
 
 def create_app(
@@ -287,6 +288,16 @@ def create_app(
         diagnosis: IncidentDiagnosisService = Depends(get_diagnosis_service),
     ) -> IncidentDiagnosis:
         return diagnosis.resume(run_id)
+
+    @app.post(
+        "/workflows/{run_id}/approve",
+        response_model=IncidentDiagnosisResponse,
+    )
+    def approve_workflow(
+        run_id: UUID,
+        diagnosis: IncidentDiagnosisService = Depends(get_diagnosis_service),
+    ) -> IncidentDiagnosis:
+        return diagnosis.approve(run_id)
 
     return app
 

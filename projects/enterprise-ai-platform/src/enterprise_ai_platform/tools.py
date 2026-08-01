@@ -44,6 +44,7 @@ class ToolNotAllowedError(Exception):
 class Tool(Protocol):
     name: str
     retry_safe: bool
+    requires_approval: bool
 
     def run(self, arguments: dict[str, Any]) -> dict[str, Any]: ...
 
@@ -55,6 +56,7 @@ class DatabaseHealthArguments(BaseModel):
 class DatabaseHealthTool:
     name = "check_database_health"
     retry_safe = True
+    requires_approval = False
 
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
         self._session_factory = session_factory
@@ -90,6 +92,12 @@ class SafeToolExecutor:
             max_workers=max_workers,
             thread_name_prefix="safe-tool",
         )
+
+    def requires_approval(self, tool_name: str) -> bool:
+        tool = self._tools.get(tool_name)
+        if tool is None:
+            raise ToolNotAllowedError(f"tool is not allowed: {tool_name}")
+        return getattr(tool, "requires_approval", True)
 
     def execute(self, call: ToolCall) -> ToolResult:
         tool = self._tools.get(call.name)
