@@ -69,6 +69,10 @@ class WorkflowCannotResumeError(Exception):
     """The workflow cannot be resumed from its current state."""
 
 
+class WorkflowAlreadyRunningError(Exception):
+    """Another worker is already processing the workflow run."""
+
+
 @dataclass(frozen=True, slots=True)
 class WorkflowState:
     run_id: UUID

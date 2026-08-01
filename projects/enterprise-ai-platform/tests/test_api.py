@@ -7,6 +7,7 @@ from enterprise_ai_platform.repository import (
     InMemoryPredictionRepository,
     InMemoryToolExecutionRepository,
     InMemoryWorkflowCheckpointRepository,
+    InMemoryWorkflowLock,
 )
 from enterprise_ai_platform.service import (
     IncidentClassificationService,
@@ -281,6 +282,7 @@ def test_workflow_resumes_after_policy_checkpoint_without_reclassification() -> 
         executions=executions,
         checkpoints=checkpoints,
         predictions=predictions,
+        workflow_lock=InMemoryWorkflowLock(),
     )
 
     result = diagnosis.resume(state.run_id)
@@ -322,6 +324,7 @@ def test_sensitive_tool_waits_for_approval_before_execution() -> None:
         executions=executions,
         checkpoints=checkpoints,
         predictions=predictions,
+        workflow_lock=InMemoryWorkflowLock(),
         tool_by_label={"infrastructure": "restart_service"},
     )
 

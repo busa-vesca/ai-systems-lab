@@ -21,11 +21,13 @@ from .postgres_repository import (
     PostgreSQLPredictionRepository,
     PostgreSQLToolExecutionRepository,
     PostgreSQLWorkflowCheckpointRepository,
+    PostgreSQLWorkflowLock,
 )
 from .repository import (
     InMemoryPredictionRepository,
     InMemoryToolExecutionRepository,
     InMemoryWorkflowCheckpointRepository,
+    InMemoryWorkflowLock,
 )
 from .service import (
     IncidentClassificationService,
@@ -40,7 +42,11 @@ from .tools import (
     ToolNotAllowedError,
 )
 from .workflow import WorkflowStep
-from .workflow import WorkflowCannotResumeError, WorkflowRunNotFoundError
+from .workflow import (
+    WorkflowAlreadyRunningError,
+    WorkflowCannotResumeError,
+    WorkflowRunNotFoundError,
+)
 
 
 class IncidentCreate(BaseModel):
@@ -112,6 +118,7 @@ def create_app(
         workflow_checkpoint_repository = (
             InMemoryWorkflowCheckpointRepository()
         )
+        workflow_lock = InMemoryWorkflowLock()
         default_tool_executor = SafeToolExecutor(())
     elif database_url := os.getenv("DATABASE_URL"):
         session_factory = create_session_factory(database_url)
@@ -125,6 +132,7 @@ def create_app(
         workflow_checkpoint_repository = (
             PostgreSQLWorkflowCheckpointRepository(session_factory)
         )
+        workflow_lock = PostgreSQLWorkflowLock(session_factory)
         default_tool_executor = SafeToolExecutor(
             (DatabaseHealthTool(session_factory),)
         )
@@ -135,6 +143,7 @@ def create_app(
         workflow_checkpoint_repository = (
             InMemoryWorkflowCheckpointRepository()
         )
+        workflow_lock = InMemoryWorkflowLock()
         default_tool_executor = SafeToolExecutor(())
 
     app.state.classification_service = classification_service or (
@@ -150,6 +159,7 @@ def create_app(
         executions=tool_execution_repository,
         checkpoints=workflow_checkpoint_repository,
         predictions=prediction_repository,
+        workflow_lock=workflow_lock,
     )
 
     def get_service(request: Request) -> IncidentService:
@@ -199,6 +209,12 @@ def create_app(
     @app.exception_handler(WorkflowCannotResumeError)
     async def handle_workflow_cannot_resume(
         _request: Request, error: WorkflowCannotResumeError
+    ) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(error)})
+
+    @app.exception_handler(WorkflowAlreadyRunningError)
+    async def handle_workflow_already_running(
+        _request: Request, error: WorkflowAlreadyRunningError
     ) -> JSONResponse:
         return JSONResponse(status_code=409, content={"detail": str(error)})
 

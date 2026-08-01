@@ -1,4 +1,5 @@
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
 from uuid import UUID
 
 from sqlalchemy import select, text
@@ -14,10 +15,15 @@ from .models import (
     WorkflowCheckpointRecord,
 )
 from .workflow import (
+    WorkflowAlreadyRunningError,
     WorkflowCheckpointConflictError,
     WorkflowState,
     WorkflowStep,
 )
+
+
+def _advisory_lock_key(run_id: UUID) -> int:
+    return run_id.int % (2**63 - 1)
 
 
 def _to_domain(record: IncidentRecord) -> Incident:
@@ -215,3 +221,30 @@ class PostgreSQLWorkflowCheckpointRepository:
             return (
                 _checkpoint_to_domain(record) if record is not None else None
             )
+
+
+class PostgreSQLWorkflowLock:
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        self._session_factory = session_factory
+
+    @contextmanager
+    def acquire(self, run_id: UUID) -> Iterator[None]:
+        lock_key = _advisory_lock_key(run_id)
+        with self._session_factory() as session:
+            acquired = bool(
+                session.scalar(
+                    text("SELECT pg_try_advisory_lock(:lock_key)"),
+                    {"lock_key": lock_key},
+                )
+            )
+            if not acquired:
+                raise WorkflowAlreadyRunningError(
+                    f"workflow run {run_id} is already being processed"
+                )
+            try:
+                yield
+            finally:
+                session.execute(
+                    text("SELECT pg_advisory_unlock(:lock_key)"),
+                    {"lock_key": lock_key},
+                )

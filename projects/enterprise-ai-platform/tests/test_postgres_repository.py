@@ -1,4 +1,5 @@
 import os
+from uuid import uuid4
 
 import pytest
 from sqlalchemy import delete
@@ -21,8 +22,13 @@ from enterprise_ai_platform.postgres_repository import (
     PostgreSQLPredictionRepository,
     PostgreSQLToolExecutionRepository,
     PostgreSQLWorkflowCheckpointRepository,
+    PostgreSQLWorkflowLock,
 )
-from enterprise_ai_platform.workflow import WorkflowState, WorkflowStep
+from enterprise_ai_platform.workflow import (
+    WorkflowAlreadyRunningError,
+    WorkflowState,
+    WorkflowStep,
+)
 
 
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -161,3 +167,19 @@ def test_postgres_repository_restores_latest_workflow_checkpoint() -> None:
             session.execute(
                 delete(IncidentRecord).where(IncidentRecord.id == incident.id)
             )
+
+
+def test_postgres_workflow_lock_rejects_second_worker() -> None:
+    assert DATABASE_URL is not None
+    session_factory = create_session_factory(DATABASE_URL)
+    first_worker = PostgreSQLWorkflowLock(session_factory)
+    second_worker = PostgreSQLWorkflowLock(session_factory)
+    run_id = uuid4()
+
+    with first_worker.acquire(run_id):
+        with pytest.raises(WorkflowAlreadyRunningError):
+            with second_worker.acquire(run_id):
+                pass
+
+    with second_worker.acquire(run_id):
+        pass

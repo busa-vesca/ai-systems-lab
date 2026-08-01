@@ -4,10 +4,12 @@ import pytest
 
 from enterprise_ai_platform.repository import (
     InMemoryWorkflowCheckpointRepository,
+    InMemoryWorkflowLock,
 )
 from enterprise_ai_platform.workflow import (
     InvalidWorkflowTransitionError,
     WorkflowCheckpointConflictError,
+    WorkflowAlreadyRunningError,
     WorkflowState,
     WorkflowStep,
 )
@@ -80,3 +82,16 @@ def test_duplicate_checkpoint_version_is_rejected() -> None:
 
     with pytest.raises(WorkflowCheckpointConflictError):
         repository.add(state)
+
+
+def test_workflow_lock_rejects_parallel_processing() -> None:
+    workflow_lock = InMemoryWorkflowLock()
+    run_id = uuid4()
+
+    with workflow_lock.acquire(run_id):
+        with pytest.raises(WorkflowAlreadyRunningError):
+            with workflow_lock.acquire(run_id):
+                pass
+
+    with workflow_lock.acquire(run_id):
+        pass

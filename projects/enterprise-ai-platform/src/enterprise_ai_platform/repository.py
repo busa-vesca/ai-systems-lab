@@ -1,10 +1,15 @@
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
+from contextlib import AbstractContextManager, contextmanager
 from threading import Lock
 from typing import Protocol
 from uuid import UUID
 
 from .domain import Incident, ModelPrediction, ToolExecution
-from .workflow import WorkflowCheckpointConflictError, WorkflowState
+from .workflow import (
+    WorkflowAlreadyRunningError,
+    WorkflowCheckpointConflictError,
+    WorkflowState,
+)
 
 
 class IncidentRepository(Protocol):
@@ -35,6 +40,10 @@ class WorkflowCheckpointRepository(Protocol):
     def add(self, state: WorkflowState) -> None: ...
 
     def get_latest(self, run_id: UUID) -> WorkflowState | None: ...
+
+
+class WorkflowLock(Protocol):
+    def acquire(self, run_id: UUID) -> AbstractContextManager[None]: ...
 
 
 class InMemoryIncidentRepository:
@@ -114,3 +123,22 @@ class InMemoryWorkflowCheckpointRepository:
                 if stored_run_id == run_id
             ]
             return max(states, key=lambda state: state.version, default=None)
+
+
+class InMemoryWorkflowLock:
+    def __init__(self) -> None:
+        self._locks: dict[UUID, Lock] = {}
+        self._guard = Lock()
+
+    @contextmanager
+    def acquire(self, run_id: UUID) -> Iterator[None]:
+        with self._guard:
+            lock = self._locks.setdefault(run_id, Lock())
+        if not lock.acquire(blocking=False):
+            raise WorkflowAlreadyRunningError(
+                f"workflow run {run_id} is already being processed"
+            )
+        try:
+            yield
+        finally:
+            lock.release()

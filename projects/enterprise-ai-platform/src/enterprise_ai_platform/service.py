@@ -16,6 +16,7 @@ from .repository import (
     PredictionRepository,
     ToolExecutionRepository,
     WorkflowCheckpointRepository,
+    WorkflowLock,
 )
 from .tools import (
     SafeToolExecutor,
@@ -118,6 +119,7 @@ class IncidentDiagnosisService:
         executions: ToolExecutionRepository,
         checkpoints: WorkflowCheckpointRepository,
         predictions: PredictionRepository,
+        workflow_lock: WorkflowLock,
         tool_by_label: dict[str, str] | None = None,
     ) -> None:
         self._classification = classification
@@ -125,6 +127,7 @@ class IncidentDiagnosisService:
         self._executions = executions
         self._checkpoints = checkpoints
         self._predictions = predictions
+        self._workflow_lock = workflow_lock
         self._tool_by_label = tool_by_label or self.TOOL_BY_LABEL
 
     def _transition(
@@ -169,32 +172,35 @@ class IncidentDiagnosisService:
     def diagnose(self, incident_id: UUID) -> IncidentDiagnosis:
         state = WorkflowState.start(incident_id=incident_id)
         self._checkpoints.add(state)
-        return self._continue(state)
+        with self._workflow_lock.acquire(state.run_id):
+            return self._continue(state)
 
     def resume(self, run_id: UUID) -> IncidentDiagnosis:
-        state = self._checkpoints.get_latest(run_id)
-        if state is None:
-            raise WorkflowRunNotFoundError(
-                f"workflow run {run_id} was not found"
-            )
-        if state.step is WorkflowStep.FAILED:
-            raise WorkflowCannotResumeError(
-                f"workflow run {run_id} is already failed"
-            )
-        return self._continue(state)
+        with self._workflow_lock.acquire(run_id):
+            state = self._checkpoints.get_latest(run_id)
+            if state is None:
+                raise WorkflowRunNotFoundError(
+                    f"workflow run {run_id} was not found"
+                )
+            if state.step is WorkflowStep.FAILED:
+                raise WorkflowCannotResumeError(
+                    f"workflow run {run_id} is already failed"
+                )
+            return self._continue(state)
 
     def approve(self, run_id: UUID) -> IncidentDiagnosis:
-        state = self._checkpoints.get_latest(run_id)
-        if state is None:
-            raise WorkflowRunNotFoundError(
-                f"workflow run {run_id} was not found"
-            )
-        if state.step is not WorkflowStep.AWAITING_APPROVAL:
-            raise WorkflowCannotResumeError(
-                f"workflow run {run_id} is not awaiting approval"
-            )
-        state = self._transition(state, WorkflowStep.APPROVED)
-        return self._continue(state)
+        with self._workflow_lock.acquire(run_id):
+            state = self._checkpoints.get_latest(run_id)
+            if state is None:
+                raise WorkflowRunNotFoundError(
+                    f"workflow run {run_id} was not found"
+                )
+            if state.step is not WorkflowStep.AWAITING_APPROVAL:
+                raise WorkflowCannotResumeError(
+                    f"workflow run {run_id} is not awaiting approval"
+                )
+            state = self._transition(state, WorkflowStep.APPROVED)
+            return self._continue(state)
 
     def _require_prediction(self, state: WorkflowState) -> ModelPrediction:
         if state.prediction_id is None:
