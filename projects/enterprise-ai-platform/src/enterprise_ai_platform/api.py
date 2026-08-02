@@ -6,7 +6,15 @@ from fastapi import Depends, FastAPI, Query, Request, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
-from .auth import PasswordHasher, RegistrationService
+from .auth import (
+    AccessToken,
+    AuthenticationNotConfiguredError,
+    AuthenticationService,
+    InvalidCredentialsError,
+    JWTTokenService,
+    PasswordHasher,
+    RegistrationService,
+)
 from .database import create_session_factory
 from .domain import (
     Incident,
@@ -83,6 +91,19 @@ class UserResponse(BaseModel):
     created_at: datetime
 
 
+class LoginRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: str = Field(min_length=3, max_length=320)
+    password: str = Field(min_length=1, max_length=128)
+
+
+class AccessTokenResponse(BaseModel):
+    access_token: str
+    token_type: str
+    expires_in: int
+
+
 class IncidentStatusUpdate(BaseModel):
     status: IncidentStatus
 
@@ -143,6 +164,7 @@ def create_app(
     classification_service: IncidentClassificationService | None = None,
     tool_executor: SafeToolExecutor | None = None,
     user_repository: UserRepository | None = None,
+    token_service: JWTTokenService | None = None,
 ) -> FastAPI:
     app = FastAPI(title="Enterprise AI Platform", version="0.1.0")
     if service is not None:
@@ -198,9 +220,21 @@ def create_app(
         predictions=prediction_repository,
         workflow_lock=workflow_lock,
     )
+    selected_user_repository = user_repository or default_user_repository
+    password_hasher = PasswordHasher()
     app.state.registration_service = RegistrationService(
-        users=user_repository or default_user_repository,
-        passwords=PasswordHasher(),
+        users=selected_user_repository,
+        passwords=password_hasher,
+    )
+    selected_token_service = token_service or JWTTokenService.from_environment()
+    app.state.authentication_service = (
+        AuthenticationService(
+            users=selected_user_repository,
+            passwords=password_hasher,
+            tokens=selected_token_service,
+        )
+        if selected_token_service is not None
+        else None
     )
 
     def get_service(request: Request) -> IncidentService:
@@ -216,6 +250,33 @@ def create_app(
 
     def get_registration_service(request: Request) -> RegistrationService:
         return request.app.state.registration_service
+
+    def get_authentication_service(request: Request) -> AuthenticationService:
+        authentication = request.app.state.authentication_service
+        if authentication is None:
+            raise AuthenticationNotConfiguredError(
+                "JWT authentication is not configured"
+            )
+        return authentication
+
+    @app.exception_handler(AuthenticationNotConfiguredError)
+    async def handle_authentication_not_configured(
+        _request: Request, error: AuthenticationNotConfiguredError
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={"detail": str(error)},
+        )
+
+    @app.exception_handler(InvalidCredentialsError)
+    async def handle_invalid_credentials(
+        _request: Request, _error: InvalidCredentialsError
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={"detail": "invalid email or password"},
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     @app.exception_handler(UserAlreadyExistsError)
     async def handle_user_already_exists(
@@ -303,6 +364,23 @@ def create_app(
             email=payload.email,
             password=payload.password,
         )
+
+    @app.post("/auth/login", response_model=AccessTokenResponse)
+    def login(
+        payload: LoginRequest,
+        authentication: AuthenticationService = Depends(
+            get_authentication_service
+        ),
+    ) -> dict[str, str | int]:
+        token: AccessToken = authentication.login(
+            email=payload.email,
+            password=payload.password,
+        )
+        return {
+            "access_token": token.value,
+            "token_type": token.token_type,
+            "expires_in": token.expires_in,
+        }
 
     @app.get("/ready", response_model=None)
     def ready(

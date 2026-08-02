@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.exc import SQLAlchemyError
 
 from enterprise_ai_platform.api import create_app
+from enterprise_ai_platform.auth import JWTTokenService
 from enterprise_ai_platform.domain import (
     ModelInferenceError,
     ModelPrediction,
@@ -183,6 +184,77 @@ def test_public_registration_cannot_choose_privileged_role() -> None:
     )
 
     assert response.status_code == 422
+
+
+def test_registered_user_can_login_and_receive_jwt() -> None:
+    users = InMemoryUserRepository()
+    tokens = JWTTokenService(secret="test-secret-that-is-at-least-32-characters")
+    client = TestClient(
+        create_app(
+            IncidentService(),
+            user_repository=users,
+            token_service=tokens,
+        )
+    )
+    credentials = {
+        "email": "viewer@example.com",
+        "password": "correct-horse-battery-staple",
+    }
+    client.post("/auth/register", json=credentials)
+
+    response = client.post("/auth/login", json=credentials)
+
+    assert response.status_code == 200
+    assert response.json()["token_type"] == "bearer"
+    assert response.json()["expires_in"] == 1_800
+    claims = tokens.decode(response.json()["access_token"])
+    assert claims["role"] == "viewer"
+    assert claims["sub"] == str(users.get_by_email("viewer@example.com").id)
+
+
+def test_wrong_password_returns_generic_401() -> None:
+    users = InMemoryUserRepository()
+    tokens = JWTTokenService(secret="test-secret-that-is-at-least-32-characters")
+    client = TestClient(
+        create_app(
+            IncidentService(),
+            user_repository=users,
+            token_service=tokens,
+        )
+    )
+    client.post(
+        "/auth/register",
+        json={
+            "email": "viewer@example.com",
+            "password": "correct-horse-battery-staple",
+        },
+    )
+
+    response = client.post(
+        "/auth/login",
+        json={
+            "email": "viewer@example.com",
+            "password": "definitely-the-wrong-password",
+        },
+    )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "invalid email or password"}
+
+
+def test_login_without_jwt_secret_returns_controlled_503() -> None:
+    client = make_client()
+
+    response = client.post(
+        "/auth/login",
+        json={
+            "email": "viewer@example.com",
+            "password": "correct-horse-battery-staple",
+        },
+    )
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "JWT authentication is not configured"}
 
 
 def test_incident_lifecycle() -> None:

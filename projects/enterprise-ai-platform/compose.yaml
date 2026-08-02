@@ -24,6 +24,7 @@ services:
       HF_MODEL_REVISION: b95119ce93d3e065de6214e38cd4a97b0f2f2c6d
       HF_HUB_DISABLE_TELEMETRY: "1"
       HF_HUB_DISABLE_IMPLICIT_TOKEN: "1"
+      JWT_SECRET: ${JWT_SECRET:-}
     ports:
       - "8000:8000"
     depends_on:
