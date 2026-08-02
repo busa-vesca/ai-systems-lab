@@ -4,11 +4,12 @@ from fastapi.testclient import TestClient
 from sqlalchemy.exc import SQLAlchemyError
 
 from enterprise_ai_platform.api import create_app
-from enterprise_ai_platform.auth import JWTTokenService
+from enterprise_ai_platform.auth import JWTTokenService, PasswordHasher
 from enterprise_ai_platform.domain import (
     ModelInferenceError,
     ModelPrediction,
     ToolExecution,
+    User,
     UserRole,
 )
 from enterprise_ai_platform.inference import ClassificationResult, IncidentClassifier
@@ -307,6 +308,64 @@ def test_missing_or_tampered_bearer_token_returns_401() -> None:
     assert missing.status_code == 401
     assert tampered.status_code == 401
     assert tampered.json() == {"detail": "invalid access token"}
+
+
+def test_viewer_cannot_approve_workflow() -> None:
+    users = InMemoryUserRepository()
+    tokens = JWTTokenService(secret="test-secret-that-is-at-least-32-characters")
+    client = TestClient(
+        create_app(
+            IncidentService(),
+            user_repository=users,
+            token_service=tokens,
+        )
+    )
+    credentials = {
+        "email": "viewer@example.com",
+        "password": "correct-horse-battery-staple",
+    }
+    client.post("/auth/register", json=credentials)
+    token = client.post("/auth/login", json=credentials).json()[
+        "access_token"
+    ]
+
+    response = client.post(
+        f"/workflows/{uuid4()}/approve",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "approver role is required"}
+
+
+def test_approver_passes_role_gate_before_workflow_lookup() -> None:
+    users = InMemoryUserRepository()
+    tokens = JWTTokenService(secret="test-secret-that-is-at-least-32-characters")
+    password = "correct-horse-battery-staple"
+    approver = User.create(
+        email="approver@example.com",
+        password_hash=PasswordHasher().hash(password),
+        role=UserRole.APPROVER,
+    )
+    users.add(approver)
+    client = TestClient(
+        create_app(
+            IncidentService(),
+            user_repository=users,
+            token_service=tokens,
+        )
+    )
+    token = client.post(
+        "/auth/login",
+        json={"email": approver.email, "password": password},
+    ).json()["access_token"]
+
+    response = client.post(
+        f"/workflows/{uuid4()}/approve",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 404
 
 
 def test_incident_lifecycle() -> None:

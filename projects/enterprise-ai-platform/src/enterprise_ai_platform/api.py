@@ -13,6 +13,7 @@ from .auth import (
     AuthenticationService,
     InvalidCredentialsError,
     InvalidAccessTokenError,
+    InsufficientRoleError,
     JWTTokenService,
     PasswordHasher,
     RegistrationService,
@@ -272,6 +273,13 @@ def create_app(
             raise InvalidAccessTokenError("invalid access token")
         return authentication.current_user(credentials.credentials)
 
+    def require_approver(
+        user: User = Depends(get_current_user),
+    ) -> User:
+        if user.role is not UserRole.APPROVER:
+            raise InsufficientRoleError("approver role is required")
+        return user
+
     @app.exception_handler(AuthenticationNotConfiguredError)
     async def handle_authentication_not_configured(
         _request: Request, error: AuthenticationNotConfiguredError
@@ -299,6 +307,15 @@ def create_app(
             status_code=status.HTTP_401_UNAUTHORIZED,
             content={"detail": "invalid access token"},
             headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    @app.exception_handler(InsufficientRoleError)
+    async def handle_insufficient_role(
+        _request: Request, error: InsufficientRoleError
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content={"detail": str(error)},
         )
 
     @app.exception_handler(UserAlreadyExistsError)
@@ -501,6 +518,7 @@ def create_app(
     def approve_workflow(
         run_id: UUID,
         diagnosis: IncidentDiagnosisService = Depends(get_diagnosis_service),
+        _approver: User = Depends(require_approver),
     ) -> IncidentDiagnosis:
         return diagnosis.approve(run_id)
 

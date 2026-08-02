@@ -30,6 +30,10 @@ class InvalidAccessTokenError(Exception):
     """A bearer token cannot identify an active user."""
 
 
+class InsufficientRoleError(Exception):
+    """The authenticated user does not have the required role."""
+
+
 @dataclass(frozen=True, slots=True)
 class AccessToken:
     value: str
