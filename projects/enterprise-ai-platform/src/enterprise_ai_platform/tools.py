@@ -112,6 +112,12 @@ class SafeToolExecutor:
             raise ToolNotAllowedError(f"tool is not allowed: {tool_name}")
         return getattr(tool, "requires_approval", True)
 
+    def is_retry_safe(self, tool_name: str) -> bool:
+        tool = self._tools.get(tool_name)
+        if tool is None:
+            raise ToolNotAllowedError(f"tool is not allowed: {tool_name}")
+        return tool.retry_safe
+
     def execute(self, call: ToolCall) -> ToolResult:
         tool = self._tools.get(call.name)
         if tool is None:

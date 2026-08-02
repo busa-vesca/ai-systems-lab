@@ -1,6 +1,7 @@
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import SQLAlchemyError
 
 from enterprise_ai_platform.api import create_app
 from enterprise_ai_platform.domain import (
@@ -38,6 +39,23 @@ class FakeClassifier:
 class FailingClassifier:
     def classify(self, _text: str) -> ClassificationResult:
         raise ModelInferenceError("model inference failed")
+
+
+class FlakyClassifier:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def classify(self, _text: str) -> ClassificationResult:
+        self.calls += 1
+        if self.calls == 1:
+            raise ModelInferenceError("temporary model failure")
+        return ClassificationResult(
+            label="database",
+            score=0.91,
+            model_id="fake/model",
+            model_revision="test-revision",
+            latency_ms=12.5,
+        )
 
 
 class LabelClassifier:
@@ -84,15 +102,22 @@ def make_classification_client(classifier: IncidentClassifier) -> TestClient:
     return TestClient(create_app(incidents, classification))
 
 
-def make_diagnosis_client(classifier: IncidentClassifier) -> TestClient:
+def make_diagnosis_client(
+    classifier: IncidentClassifier,
+    executor: SafeToolExecutor | None = None,
+) -> TestClient:
     incidents = IncidentService()
     classification = IncidentClassificationService(
         incidents=incidents,
         classifier=classifier,
         predictions=InMemoryPredictionRepository(),
     )
-    executor = SafeToolExecutor((FakeDatabaseHealthTool(),))
-    return TestClient(create_app(incidents, classification, executor))
+    selected_executor = executor or SafeToolExecutor(
+        (FakeDatabaseHealthTool(),)
+    )
+    return TestClient(
+        create_app(incidents, classification, selected_executor)
+    )
 
 
 def test_health_and_readiness() -> None:
@@ -184,6 +209,76 @@ def test_model_failure_returns_controlled_502() -> None:
 
     assert response.status_code == 502
     assert response.json() == {"detail": "model inference failed"}
+
+
+def test_retryable_model_failure_starts_linked_workflow_run() -> None:
+    classifier = FlakyClassifier()
+    client = make_diagnosis_client(classifier)
+    incident_id = client.post(
+        "/incidents",
+        json={"title": "Model alert", "description": "Temporary failure"},
+    ).json()["id"]
+
+    failed = client.post(f"/incidents/{incident_id}/diagnose")
+
+    assert failed.status_code == 503
+    assert failed.json()["detail"] == "temporary model failure"
+    assert failed.json()["retryable"] is True
+    failed_run_id = failed.json()["workflow_run_id"]
+
+    retried = client.post(f"/workflows/{failed_run_id}/retry")
+
+    assert retried.status_code == 200
+    assert retried.json()["workflow_step"] == "completed"
+    assert retried.json()["parent_run_id"] == failed_run_id
+    assert retried.json()["workflow_run_id"] != failed_run_id
+    assert classifier.calls == 2
+
+
+class RecoveringDatabaseTool:
+    name = "check_database_health"
+    retry_safe = True
+    requires_approval = False
+
+    def __init__(self) -> None:
+        self.calls = 0
+        self.keys: list[str] = []
+
+    def run(
+        self,
+        _arguments: dict[str, object],
+        *,
+        idempotency_key: str,
+    ) -> dict[str, object]:
+        self.calls += 1
+        self.keys.append(idempotency_key)
+        if self.calls == 1:
+            raise SQLAlchemyError("temporary database failure")
+        return {"database_available": True}
+
+
+def test_retryable_tool_failure_uses_new_run_and_idempotency_key() -> None:
+    tool = RecoveringDatabaseTool()
+    executor = SafeToolExecutor((tool,), max_attempts=1)
+    client = make_diagnosis_client(FakeClassifier(), executor)
+    incident_id = client.post(
+        "/incidents",
+        json={"title": "Database alert", "description": "Timeout"},
+    ).json()["id"]
+
+    failed = client.post(f"/incidents/{incident_id}/diagnose")
+
+    assert failed.status_code == 503
+    assert failed.json()["retryable"] is True
+    failed_run_id = failed.json()["workflow_run_id"]
+
+    retried = client.post(f"/workflows/{failed_run_id}/retry")
+
+    assert retried.status_code == 200
+    assert retried.json()["workflow_step"] == "completed"
+    assert retried.json()["parent_run_id"] == failed_run_id
+    assert tool.calls == 2
+    assert len(set(tool.keys)) == 2
 
 
 def test_database_incident_runs_allowed_diagnostic_tool() -> None:

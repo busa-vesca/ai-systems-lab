@@ -2,6 +2,7 @@ from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     DateTime,
     Float,
@@ -167,3 +168,8 @@ class WorkflowCheckpointRecord(Base):
         nullable=True,
     )
     skipped_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    parent_run_id: Mapped[UUID | None] = mapped_column(
+        PostgreSQLUUID(as_uuid=True), nullable=True, index=True
+    )
+    failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    retryable: Mapped[bool | None] = mapped_column(Boolean, nullable=True)

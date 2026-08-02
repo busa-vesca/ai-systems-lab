@@ -163,15 +163,28 @@ def test_postgres_repository_restores_latest_workflow_checkpoint() -> None:
     assert DATABASE_URL is not None
     session_factory = create_session_factory(DATABASE_URL)
     incident = Incident.create(title="Database alert", description="Timeout")
-    received = WorkflowState.start(incident_id=incident.id)
+    parent_run_id = uuid4()
+    received = WorkflowState.start(
+        incident_id=incident.id,
+        parent_run_id=parent_run_id,
+    )
     classified = received.transition_to(WorkflowStep.CLASSIFIED)
+    failed = classified.transition_to(
+        WorkflowStep.FAILED,
+        failure_reason="temporary model failure",
+        retryable=True,
+    )
     try:
         PostgreSQLIncidentRepository(session_factory).add(incident)
         repository = PostgreSQLWorkflowCheckpointRepository(session_factory)
         repository.add(received)
         repository.add(classified)
+        repository.add(failed)
 
-        assert repository.get_latest(received.run_id) == classified
+        assert repository.get_latest(received.run_id) == failed
+        assert failed.parent_run_id == parent_run_id
+        assert failed.failure_reason == "temporary model failure"
+        assert failed.retryable is True
     finally:
         with session_factory.begin() as session:
             session.execute(

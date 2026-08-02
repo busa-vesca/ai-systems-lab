@@ -45,6 +45,7 @@ from .workflow import WorkflowStep
 from .workflow import (
     WorkflowAlreadyRunningError,
     WorkflowCannotResumeError,
+    WorkflowRunFailedError,
     WorkflowRunNotFoundError,
 )
 
@@ -104,6 +105,9 @@ class IncidentDiagnosisResponse(BaseModel):
     workflow_step: WorkflowStep
     workflow_version: int
     approval_required: bool
+    parent_run_id: UUID | None
+    failure_reason: str | None
+    retryable: bool | None
 
 
 def create_app(
@@ -219,6 +223,19 @@ def create_app(
     ) -> JSONResponse:
         return JSONResponse(status_code=409, content={"detail": str(error)})
 
+    @app.exception_handler(WorkflowRunFailedError)
+    async def handle_workflow_run_failed(
+        _request: Request, error: WorkflowRunFailedError
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=503 if error.retryable else 500,
+            content={
+                "detail": error.reason,
+                "workflow_run_id": str(error.run_id),
+                "retryable": error.retryable,
+            },
+        )
+
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
@@ -315,6 +332,16 @@ def create_app(
         diagnosis: IncidentDiagnosisService = Depends(get_diagnosis_service),
     ) -> IncidentDiagnosis:
         return diagnosis.approve(run_id)
+
+    @app.post(
+        "/workflows/{run_id}/retry",
+        response_model=IncidentDiagnosisResponse,
+    )
+    def retry_workflow(
+        run_id: UUID,
+        diagnosis: IncidentDiagnosisService = Depends(get_diagnosis_service),
+    ) -> IncidentDiagnosis:
+        return diagnosis.retry(run_id)
 
     return app
 

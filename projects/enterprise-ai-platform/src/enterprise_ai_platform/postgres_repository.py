@@ -201,6 +201,9 @@ def _checkpoint_to_domain(
         prediction_id=record.prediction_id,
         tool_execution_id=record.tool_execution_id,
         skipped_reason=record.skipped_reason,
+        parent_run_id=record.parent_run_id,
+        failure_reason=record.failure_reason,
+        retryable=record.retryable,
     )
 
 
@@ -222,6 +225,9 @@ class PostgreSQLWorkflowCheckpointRepository:
                         prediction_id=state.prediction_id,
                         tool_execution_id=state.tool_execution_id,
                         skipped_reason=state.skipped_reason,
+                        parent_run_id=state.parent_run_id,
+                        failure_reason=state.failure_reason,
+                        retryable=state.retryable,
                     )
                 )
         except IntegrityError as error:

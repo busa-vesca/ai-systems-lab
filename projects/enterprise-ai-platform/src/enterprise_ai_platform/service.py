@@ -6,6 +6,7 @@ from .domain import (
     Incident,
     IncidentNotFoundError,
     IncidentStatus,
+    ModelInferenceError,
     ModelPrediction,
     ToolExecution,
 )
@@ -26,6 +27,7 @@ from .tools import (
 )
 from .workflow import (
     WorkflowCannotResumeError,
+    WorkflowRunFailedError,
     WorkflowRunNotFoundError,
     WorkflowState,
     WorkflowStep,
@@ -103,6 +105,9 @@ class IncidentDiagnosis:
     workflow_step: WorkflowStep
     workflow_version: int
     approval_required: bool
+    parent_run_id: UUID | None
+    failure_reason: str | None
+    retryable: bool | None
 
 
 class IncidentDiagnosisService:
@@ -137,12 +142,16 @@ class IncidentDiagnosisService:
         prediction_id: UUID | None = None,
         tool_execution_id: UUID | None = None,
         skipped_reason: str | None = None,
+        failure_reason: str | None = None,
+        retryable: bool | None = None,
     ) -> WorkflowState:
         next_state = state.transition_to(
             step,
             prediction_id=prediction_id,
             tool_execution_id=tool_execution_id,
             skipped_reason=skipped_reason,
+            failure_reason=failure_reason,
+            retryable=retryable,
         )
         self._checkpoints.add(next_state)
         return next_state
@@ -167,6 +176,9 @@ class IncidentDiagnosisService:
             approval_required=(
                 state.step is WorkflowStep.AWAITING_APPROVAL
             ),
+            parent_run_id=state.parent_run_id,
+            failure_reason=state.failure_reason,
+            retryable=state.retryable,
         )
 
     def diagnose(self, incident_id: UUID) -> IncidentDiagnosis:
@@ -201,6 +213,29 @@ class IncidentDiagnosisService:
                 )
             state = self._transition(state, WorkflowStep.APPROVED)
             return self._continue(state)
+
+    def retry(self, run_id: UUID) -> IncidentDiagnosis:
+        with self._workflow_lock.acquire(run_id):
+            failed_state = self._checkpoints.get_latest(run_id)
+            if failed_state is None:
+                raise WorkflowRunNotFoundError(
+                    f"workflow run {run_id} was not found"
+                )
+            if (
+                failed_state.step is not WorkflowStep.FAILED
+                or failed_state.retryable is not True
+            ):
+                raise WorkflowCannotResumeError(
+                    f"workflow run {run_id} is not retryable"
+                )
+            retry_state = WorkflowState.start(
+                incident_id=failed_state.incident_id,
+                parent_run_id=run_id,
+            )
+            self._checkpoints.add(retry_state)
+
+        with self._workflow_lock.acquire(retry_state.run_id):
+            return self._continue(retry_state)
 
     def _require_prediction(self, state: WorkflowState) -> ModelPrediction:
         if state.prediction_id is None:
@@ -310,6 +345,21 @@ class IncidentDiagnosisService:
                             idempotency_key=tool_result.idempotency_key,
                         )
                     )
+                if execution.status == ToolExecutionStatus.FAILED.value:
+                    reason = execution.error or "tool execution failed"
+                    retryable = self._executor.is_retry_safe(tool_name)
+                    state = self._transition(
+                        state,
+                        WorkflowStep.FAILED,
+                        tool_execution_id=execution.id,
+                        failure_reason=reason,
+                        retryable=retryable,
+                    )
+                    raise WorkflowRunFailedError(
+                        run_id=state.run_id,
+                        reason=reason,
+                        retryable=retryable,
+                    )
                 state = self._transition(
                     state,
                     WorkflowStep.TOOL_EXECUTED,
@@ -334,10 +384,23 @@ class IncidentDiagnosisService:
                 tool_execution_id=state.tool_execution_id,
                 skipped_reason=state.skipped_reason,
             )
-        except Exception:
+        except WorkflowRunFailedError:
+            raise
+        except Exception as error:
             if state.step not in {
                 WorkflowStep.COMPLETED,
                 WorkflowStep.FAILED,
             }:
-                self._transition(state, WorkflowStep.FAILED)
+                retryable = isinstance(error, ModelInferenceError)
+                state = self._transition(
+                    state,
+                    WorkflowStep.FAILED,
+                    failure_reason=str(error),
+                    retryable=retryable,
+                )
+                raise WorkflowRunFailedError(
+                    run_id=state.run_id,
+                    reason=str(error),
+                    retryable=retryable,
+                ) from error
             raise
