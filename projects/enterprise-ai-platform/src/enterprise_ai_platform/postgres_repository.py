@@ -7,11 +7,20 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from .database import session_scope
-from .domain import Incident, IncidentStatus, ModelPrediction, ToolExecution
+from .domain import (
+    Incident,
+    IncidentStatus,
+    ModelPrediction,
+    ToolExecution,
+    User,
+    UserAlreadyExistsError,
+    UserRole,
+)
 from .models import (
     IncidentRecord,
     ModelPredictionRecord,
     ToolExecutionRecord,
+    UserRecord,
     WorkflowCheckpointRecord,
 )
 from .workflow import (
@@ -34,6 +43,50 @@ def _to_domain(record: IncidentRecord) -> Incident:
         status=IncidentStatus(record.status),
         created_at=record.created_at,
     )
+
+
+def _user_to_domain(record: UserRecord) -> User:
+    return User(
+        id=record.id,
+        email=record.email,
+        password_hash=record.password_hash,
+        role=UserRole(record.role),
+        is_active=record.is_active,
+        created_at=record.created_at,
+    )
+
+
+class PostgreSQLUserRepository:
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        self._session_factory = session_factory
+
+    def add(self, user: User) -> None:
+        try:
+            with session_scope(self._session_factory) as session:
+                session.add(
+                    UserRecord(
+                        id=user.id,
+                        email=user.email,
+                        password_hash=user.password_hash,
+                        role=user.role.value,
+                        is_active=user.is_active,
+                        created_at=user.created_at,
+                    )
+                )
+        except IntegrityError as error:
+            raise UserAlreadyExistsError(
+                f"user already exists: {user.email}"
+            ) from error
+
+    def get_by_email(self, email: str) -> User | None:
+        normalized_email = email.strip().lower()
+        with session_scope(self._session_factory) as session:
+            record = session.scalar(
+                select(UserRecord).where(
+                    UserRecord.email == normalized_email
+                )
+            )
+            return _user_to_domain(record) if record is not None else None
 
 
 def _prediction_to_domain(record: ModelPredictionRecord) -> ModelPrediction:

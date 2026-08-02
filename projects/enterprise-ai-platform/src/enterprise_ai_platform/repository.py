@@ -4,7 +4,13 @@ from threading import Lock
 from typing import Protocol
 from uuid import UUID
 
-from .domain import Incident, ModelPrediction, ToolExecution
+from .domain import (
+    Incident,
+    ModelPrediction,
+    ToolExecution,
+    User,
+    UserAlreadyExistsError,
+)
 from .workflow import (
     WorkflowAlreadyRunningError,
     WorkflowCheckpointConflictError,
@@ -22,6 +28,12 @@ class IncidentRepository(Protocol):
     def get(self, incident_id: UUID) -> Incident | None: ...
 
     def update(self, incident: Incident) -> None: ...
+
+
+class UserRepository(Protocol):
+    def add(self, user: User) -> None: ...
+
+    def get_by_email(self, email: str) -> User | None: ...
 
 
 class PredictionRepository(Protocol):
@@ -72,6 +84,25 @@ class InMemoryIncidentRepository:
     def update(self, incident: Incident) -> None:
         with self._lock:
             self._incidents[incident.id] = incident
+
+
+class InMemoryUserRepository:
+    def __init__(self) -> None:
+        self._users_by_email: dict[str, User] = {}
+        self._lock = Lock()
+
+    def add(self, user: User) -> None:
+        with self._lock:
+            if user.email in self._users_by_email:
+                raise UserAlreadyExistsError(
+                    f"user already exists: {user.email}"
+                )
+            self._users_by_email[user.email] = user
+
+    def get_by_email(self, email: str) -> User | None:
+        normalized_email = email.strip().lower()
+        with self._lock:
+            return self._users_by_email.get(normalized_email)
 
 
 class InMemoryPredictionRepository:

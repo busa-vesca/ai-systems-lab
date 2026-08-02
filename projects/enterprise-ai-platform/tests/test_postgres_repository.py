@@ -10,17 +10,22 @@ from enterprise_ai_platform.domain import (
     IncidentStatus,
     ModelPrediction,
     ToolExecution,
+    User,
+    UserAlreadyExistsError,
+    UserRole,
 )
 from enterprise_ai_platform.models import (
     IncidentRecord,
     ModelPredictionRecord,
     ToolExecutionRecord,
+    UserRecord,
     WorkflowCheckpointRecord,
 )
 from enterprise_ai_platform.postgres_repository import (
     PostgreSQLIncidentRepository,
     PostgreSQLPredictionRepository,
     PostgreSQLToolExecutionRepository,
+    PostgreSQLUserRepository,
     PostgreSQLWorkflowCheckpointRepository,
     PostgreSQLWorkflowLock,
 )
@@ -55,6 +60,33 @@ def test_postgres_repository_persists_incident() -> None:
         with session_factory.begin() as session:
             session.execute(
                 delete(IncidentRecord).where(IncidentRecord.id == incident.id)
+            )
+
+
+def test_postgres_repository_persists_and_finds_user() -> None:
+    assert DATABASE_URL is not None
+    session_factory = create_session_factory(DATABASE_URL)
+    user = User.create(
+        email="Operator@Example.com",
+        password_hash="$argon2id$test-hash",
+        role=UserRole.OPERATOR,
+    )
+    try:
+        repository = PostgreSQLUserRepository(session_factory)
+        repository.add(user)
+
+        assert repository.get_by_email(" operator@EXAMPLE.COM ") == user
+        with pytest.raises(UserAlreadyExistsError):
+            repository.add(
+                User.create(
+                    email="operator@example.com",
+                    password_hash="$argon2id$another-test-hash",
+                )
+            )
+    finally:
+        with session_factory.begin() as session:
+            session.execute(
+                delete(UserRecord).where(UserRecord.id == user.id)
             )
 
 

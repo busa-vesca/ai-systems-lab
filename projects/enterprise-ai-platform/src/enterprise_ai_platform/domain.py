@@ -39,6 +39,10 @@ class ModelInferenceError(IncidentError):
     """The model could not produce a usable prediction."""
 
 
+class UserAlreadyExistsError(Exception):
+    """A user with the normalized email already exists."""
+
+
 @dataclass(frozen=True, slots=True)
 class User:
     id: UUID
