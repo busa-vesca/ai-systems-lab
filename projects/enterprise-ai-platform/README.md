@@ -41,7 +41,7 @@ POST   /workflows/{run_id}/retry
 ## Implemented production layers
 
 - typed incident domain, service layer and controlled errors
-- PostgreSQL repositories and Alembic migrations `0001` through `0009`
+- PostgreSQL repositories and Alembic migrations `0001` through `0011`
 - CPU Docker image and Jetson Orin GPU deployment override
 - pinned `cross-encoder/nli-MiniLM2-L6-H768` zero-shot classifier
 - safetensors-only weights, disabled remote model code and persistent cache

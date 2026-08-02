@@ -260,6 +260,7 @@ def _checkpoint_to_domain(
         tool_execution_id=record.tool_execution_id,
         skipped_reason=record.skipped_reason,
         parent_run_id=record.parent_run_id,
+        approved_by=record.approved_by,
         failure_reason=record.failure_reason,
         retryable=record.retryable,
     )
@@ -284,6 +285,7 @@ class PostgreSQLWorkflowCheckpointRepository:
                         tool_execution_id=state.tool_execution_id,
                         skipped_reason=state.skipped_reason,
                         parent_run_id=state.parent_run_id,
+                        approved_by=state.approved_by,
                         failure_reason=state.failure_reason,
                         retryable=state.retryable,
                     )

@@ -95,6 +95,7 @@ class WorkflowState:
     tool_execution_id: UUID | None = None
     skipped_reason: str | None = None
     parent_run_id: UUID | None = None
+    approved_by: UUID | None = None
     failure_reason: str | None = None
     retryable: bool | None = None
 
@@ -123,6 +124,7 @@ class WorkflowState:
         prediction_id: UUID | None = None,
         tool_execution_id: UUID | None = None,
         skipped_reason: str | None = None,
+        approved_by: UUID | None = None,
         failure_reason: str | None = None,
         retryable: bool | None = None,
     ) -> "WorkflowState":
@@ -138,6 +140,7 @@ class WorkflowState:
             prediction_id=prediction_id or self.prediction_id,
             tool_execution_id=tool_execution_id or self.tool_execution_id,
             skipped_reason=skipped_reason or self.skipped_reason,
+            approved_by=approved_by or self.approved_by,
             failure_reason=failure_reason or self.failure_reason,
             retryable=(
                 retryable if retryable is not None else self.retryable

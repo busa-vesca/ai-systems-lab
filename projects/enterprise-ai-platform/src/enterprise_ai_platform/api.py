@@ -158,6 +158,7 @@ class IncidentDiagnosisResponse(BaseModel):
     workflow_version: int
     approval_required: bool
     parent_run_id: UUID | None
+    approved_by: UUID | None
     failure_reason: str | None
     retryable: bool | None
 
@@ -518,9 +519,9 @@ def create_app(
     def approve_workflow(
         run_id: UUID,
         diagnosis: IncidentDiagnosisService = Depends(get_diagnosis_service),
-        _approver: User = Depends(require_approver),
+        approver: User = Depends(require_approver),
     ) -> IncidentDiagnosis:
-        return diagnosis.approve(run_id)
+        return diagnosis.approve(run_id, approver_id=approver.id)
 
     @app.post(
         "/workflows/{run_id}/retry",

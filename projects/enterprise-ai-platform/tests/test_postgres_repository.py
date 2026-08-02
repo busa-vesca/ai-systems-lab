@@ -230,6 +230,50 @@ def test_postgres_repository_restores_latest_workflow_checkpoint() -> None:
             )
 
 
+def test_postgres_checkpoint_preserves_approval_actor() -> None:
+    assert DATABASE_URL is not None
+    session_factory = create_session_factory(DATABASE_URL)
+    incident = Incident.create(title="Service alert", description="Restart")
+    approver = User.create(
+        email=f"approver-{uuid4()}@example.com",
+        password_hash="$argon2id$test-hash",
+        role=UserRole.APPROVER,
+    )
+    state = WorkflowState.start(incident_id=incident.id)
+    for step in (
+        WorkflowStep.CLASSIFIED,
+        WorkflowStep.POLICY_CHECKED,
+        WorkflowStep.AWAITING_APPROVAL,
+    ):
+        state = state.transition_to(step)
+    approved = state.transition_to(
+        WorkflowStep.APPROVED,
+        approved_by=approver.id,
+    )
+    try:
+        PostgreSQLIncidentRepository(session_factory).add(incident)
+        PostgreSQLUserRepository(session_factory).add(approver)
+        repository = PostgreSQLWorkflowCheckpointRepository(session_factory)
+        repository.add(approved)
+
+        restored = repository.get_latest(approved.run_id)
+        assert restored is not None
+        assert restored.approved_by == approver.id
+    finally:
+        with session_factory.begin() as session:
+            session.execute(
+                delete(WorkflowCheckpointRecord).where(
+                    WorkflowCheckpointRecord.run_id == approved.run_id
+                )
+            )
+            session.execute(
+                delete(UserRecord).where(UserRecord.id == approver.id)
+            )
+            session.execute(
+                delete(IncidentRecord).where(IncidentRecord.id == incident.id)
+            )
+
+
 def test_postgres_workflow_lock_rejects_second_worker() -> None:
     assert DATABASE_URL is not None
     session_factory = create_session_factory(DATABASE_URL)

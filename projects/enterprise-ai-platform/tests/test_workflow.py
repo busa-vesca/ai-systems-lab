@@ -42,19 +42,24 @@ def test_read_only_tool_path_reaches_completed() -> None:
 
 def test_write_tool_can_wait_for_approval() -> None:
     state = WorkflowState.start(incident_id=uuid4())
+    approver_id = uuid4()
 
     for step in (
         WorkflowStep.CLASSIFIED,
         WorkflowStep.POLICY_CHECKED,
         WorkflowStep.AWAITING_APPROVAL,
-        WorkflowStep.APPROVED,
-        WorkflowStep.TOOL_EXECUTED,
-        WorkflowStep.COMPLETED,
     ):
         state = state.transition_to(step)
+    state = state.transition_to(
+        WorkflowStep.APPROVED,
+        approved_by=approver_id,
+    )
+    state = state.transition_to(WorkflowStep.TOOL_EXECUTED)
+    state = state.transition_to(WorkflowStep.COMPLETED)
 
     assert state.step is WorkflowStep.COMPLETED
     assert state.version == 7
+    assert state.approved_by == approver_id
 
 
 def test_invalid_transition_is_rejected() -> None:

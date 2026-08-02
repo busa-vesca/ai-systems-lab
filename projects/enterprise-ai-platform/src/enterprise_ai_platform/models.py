@@ -195,5 +195,11 @@ class WorkflowCheckpointRecord(Base):
     parent_run_id: Mapped[UUID | None] = mapped_column(
         PostgreSQLUUID(as_uuid=True), nullable=True, index=True
     )
+    approved_by: Mapped[UUID | None] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
     failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     retryable: Mapped[bool | None] = mapped_column(Boolean, nullable=True)

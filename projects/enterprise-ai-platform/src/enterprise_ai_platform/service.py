@@ -106,6 +106,7 @@ class IncidentDiagnosis:
     workflow_version: int
     approval_required: bool
     parent_run_id: UUID | None
+    approved_by: UUID | None
     failure_reason: str | None
     retryable: bool | None
 
@@ -142,6 +143,7 @@ class IncidentDiagnosisService:
         prediction_id: UUID | None = None,
         tool_execution_id: UUID | None = None,
         skipped_reason: str | None = None,
+        approved_by: UUID | None = None,
         failure_reason: str | None = None,
         retryable: bool | None = None,
     ) -> WorkflowState:
@@ -150,6 +152,7 @@ class IncidentDiagnosisService:
             prediction_id=prediction_id,
             tool_execution_id=tool_execution_id,
             skipped_reason=skipped_reason,
+            approved_by=approved_by,
             failure_reason=failure_reason,
             retryable=retryable,
         )
@@ -177,6 +180,7 @@ class IncidentDiagnosisService:
                 state.step is WorkflowStep.AWAITING_APPROVAL
             ),
             parent_run_id=state.parent_run_id,
+            approved_by=state.approved_by,
             failure_reason=state.failure_reason,
             retryable=state.retryable,
         )
@@ -200,7 +204,12 @@ class IncidentDiagnosisService:
                 )
             return self._continue(state)
 
-    def approve(self, run_id: UUID) -> IncidentDiagnosis:
+    def approve(
+        self,
+        run_id: UUID,
+        *,
+        approver_id: UUID,
+    ) -> IncidentDiagnosis:
         with self._workflow_lock.acquire(run_id):
             state = self._checkpoints.get_latest(run_id)
             if state is None:
@@ -211,7 +220,11 @@ class IncidentDiagnosisService:
                 raise WorkflowCannotResumeError(
                     f"workflow run {run_id} is not awaiting approval"
                 )
-            state = self._transition(state, WorkflowStep.APPROVED)
+            state = self._transition(
+                state,
+                WorkflowStep.APPROVED,
+                approved_by=approver_id,
+            )
             return self._continue(state)
 
     def retry(self, run_id: UUID) -> IncidentDiagnosis:

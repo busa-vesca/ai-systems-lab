@@ -695,11 +695,19 @@ def test_sensitive_tool_waits_for_approval_before_execution() -> None:
     assert waiting.tool_result is None
     assert tool.calls == 0
 
-    completed = diagnosis.approve(waiting.workflow_run_id)
+    approver_id = uuid4()
+    completed = diagnosis.approve(
+        waiting.workflow_run_id,
+        approver_id=approver_id,
+    )
 
     assert completed.workflow_step is WorkflowStep.COMPLETED
     assert completed.workflow_version == 7
     assert completed.approval_required is False
+    assert completed.approved_by == approver_id
+    latest = checkpoints.get_latest(waiting.workflow_run_id)
+    assert latest is not None
+    assert latest.approved_by == approver_id
     assert completed.tool_result is not None
     assert completed.tool_result.output == {"restart_requested": True}
     assert completed.tool_result.idempotency_key == (
