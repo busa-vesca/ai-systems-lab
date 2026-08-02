@@ -8,11 +8,13 @@ from enterprise_ai_platform.domain import (
     ModelInferenceError,
     ModelPrediction,
     ToolExecution,
+    UserRole,
 )
 from enterprise_ai_platform.inference import ClassificationResult, IncidentClassifier
 from enterprise_ai_platform.repository import (
     InMemoryPredictionRepository,
     InMemoryToolExecutionRepository,
+    InMemoryUserRepository,
     InMemoryWorkflowCheckpointRepository,
     InMemoryWorkflowLock,
 )
@@ -125,6 +127,62 @@ def test_health_and_readiness() -> None:
 
     assert client.get("/health").json() == {"status": "ok"}
     assert client.get("/ready").json() == {"status": "ready"}
+
+
+def test_user_registration_hashes_password_and_hides_hash() -> None:
+    users = InMemoryUserRepository()
+    client = TestClient(
+        create_app(IncidentService(), user_repository=users)
+    )
+
+    response = client.post(
+        "/auth/register",
+        json={
+            "email": "Viewer@Example.com",
+            "password": "correct-horse-battery-staple",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["email"] == "viewer@example.com"
+    assert response.json()["role"] == UserRole.VIEWER
+    assert "password" not in response.json()
+    assert "password_hash" not in response.json()
+    stored = users.get_by_email("viewer@example.com")
+    assert stored is not None
+    assert stored.password_hash.startswith("$argon2")
+
+
+def test_duplicate_user_registration_returns_controlled_409() -> None:
+    users = InMemoryUserRepository()
+    client = TestClient(
+        create_app(IncidentService(), user_repository=users)
+    )
+    payload = {
+        "email": "viewer@example.com",
+        "password": "correct-horse-battery-staple",
+    }
+
+    assert client.post("/auth/register", json=payload).status_code == 201
+    duplicate = client.post("/auth/register", json=payload)
+
+    assert duplicate.status_code == 409
+    assert duplicate.json() == {"detail": "user already exists"}
+
+
+def test_public_registration_cannot_choose_privileged_role() -> None:
+    client = make_client()
+
+    response = client.post(
+        "/auth/register",
+        json={
+            "email": "attacker@example.com",
+            "password": "correct-horse-battery-staple",
+            "role": "approver",
+        },
+    )
+
+    assert response.status_code == 422
 
 
 def test_incident_lifecycle() -> None:

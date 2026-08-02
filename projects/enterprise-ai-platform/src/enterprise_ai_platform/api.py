@@ -6,6 +6,7 @@ from fastapi import Depends, FastAPI, Query, Request, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
+from .auth import PasswordHasher, RegistrationService
 from .database import create_session_factory
 from .domain import (
     Incident,
@@ -14,20 +15,26 @@ from .domain import (
     InvalidStatusTransitionError,
     ModelInferenceError,
     ModelPrediction,
+    User,
+    UserAlreadyExistsError,
+    UserRole,
 )
 from .inference import HuggingFaceIncidentClassifier
 from .postgres_repository import (
     PostgreSQLIncidentRepository,
     PostgreSQLPredictionRepository,
     PostgreSQLToolExecutionRepository,
+    PostgreSQLUserRepository,
     PostgreSQLWorkflowCheckpointRepository,
     PostgreSQLWorkflowLock,
 )
 from .repository import (
+    InMemoryUserRepository,
     InMemoryPredictionRepository,
     InMemoryToolExecutionRepository,
     InMemoryWorkflowCheckpointRepository,
     InMemoryWorkflowLock,
+    UserRepository,
 )
 from .service import (
     IncidentClassificationService,
@@ -53,6 +60,27 @@ from .workflow import (
 class IncidentCreate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     description: str = Field(min_length=1, max_length=5_000)
+
+
+class UserRegistration(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: str = Field(
+        min_length=3,
+        max_length=320,
+        pattern=r"^[^@\s]+@[^@\s]+$",
+    )
+    password: str = Field(min_length=12, max_length=128)
+
+
+class UserResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    email: str
+    role: UserRole
+    is_active: bool
+    created_at: datetime
 
 
 class IncidentStatusUpdate(BaseModel):
@@ -114,6 +142,7 @@ def create_app(
     service: IncidentService | None = None,
     classification_service: IncidentClassificationService | None = None,
     tool_executor: SafeToolExecutor | None = None,
+    user_repository: UserRepository | None = None,
 ) -> FastAPI:
     app = FastAPI(title="Enterprise AI Platform", version="0.1.0")
     if service is not None:
@@ -124,6 +153,7 @@ def create_app(
             InMemoryWorkflowCheckpointRepository()
         )
         workflow_lock = InMemoryWorkflowLock()
+        default_user_repository = InMemoryUserRepository()
         default_tool_executor = SafeToolExecutor(())
     elif database_url := os.getenv("DATABASE_URL"):
         session_factory = create_session_factory(database_url)
@@ -138,6 +168,7 @@ def create_app(
             PostgreSQLWorkflowCheckpointRepository(session_factory)
         )
         workflow_lock = PostgreSQLWorkflowLock(session_factory)
+        default_user_repository = PostgreSQLUserRepository(session_factory)
         default_tool_executor = SafeToolExecutor(
             (DatabaseHealthTool(session_factory),)
         )
@@ -149,6 +180,7 @@ def create_app(
             InMemoryWorkflowCheckpointRepository()
         )
         workflow_lock = InMemoryWorkflowLock()
+        default_user_repository = InMemoryUserRepository()
         default_tool_executor = SafeToolExecutor(())
 
     app.state.classification_service = classification_service or (
@@ -166,6 +198,10 @@ def create_app(
         predictions=prediction_repository,
         workflow_lock=workflow_lock,
     )
+    app.state.registration_service = RegistrationService(
+        users=user_repository or default_user_repository,
+        passwords=PasswordHasher(),
+    )
 
     def get_service(request: Request) -> IncidentService:
         return request.app.state.incident_service
@@ -177,6 +213,18 @@ def create_app(
 
     def get_diagnosis_service(request: Request) -> IncidentDiagnosisService:
         return request.app.state.diagnosis_service
+
+    def get_registration_service(request: Request) -> RegistrationService:
+        return request.app.state.registration_service
+
+    @app.exception_handler(UserAlreadyExistsError)
+    async def handle_user_already_exists(
+        _request: Request, _error: UserAlreadyExistsError
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content={"detail": "user already exists"},
+        )
 
     @app.exception_handler(IncidentNotFoundError)
     async def handle_not_found(
@@ -239,6 +287,22 @@ def create_app(
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.post(
+        "/auth/register",
+        response_model=UserResponse,
+        status_code=status.HTTP_201_CREATED,
+    )
+    def register_user(
+        payload: UserRegistration,
+        registration: RegistrationService = Depends(
+            get_registration_service
+        ),
+    ) -> User:
+        return registration.register(
+            email=payload.email,
+            password=payload.password,
+        )
 
     @app.get("/ready", response_model=None)
     def ready(

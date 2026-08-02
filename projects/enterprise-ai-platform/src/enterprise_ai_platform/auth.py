@@ -1,6 +1,9 @@
 from pwdlib import PasswordHash
 from pwdlib.exceptions import UnknownHashError
 
+from .domain import User, UserRole
+from .repository import UserRepository
+
 
 MIN_PASSWORD_LENGTH = 12
 
@@ -23,3 +26,23 @@ class PasswordHasher:
             return self._password_hash.verify(password, password_hash)
         except UnknownHashError:
             return False
+
+
+class RegistrationService:
+    def __init__(
+        self,
+        *,
+        users: UserRepository,
+        passwords: PasswordHasher,
+    ) -> None:
+        self._users = users
+        self._passwords = passwords
+
+    def register(self, *, email: str, password: str) -> User:
+        user = User.create(
+            email=email,
+            password_hash=self._passwords.hash(password),
+            role=UserRole.VIEWER,
+        )
+        self._users.add(user)
+        return user
