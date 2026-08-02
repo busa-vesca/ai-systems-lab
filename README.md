@@ -12,7 +12,7 @@ Portfolio and learning repository for becoming a **Production / Enterprise AI En
 
 [`projects/enterprise-ai-platform`](projects/enterprise-ai-platform) is the primary portfolio project. It starts as a tested FastAPI incident backend and grows through the 12-week roadmap into an auditable enterprise AI workflow.
 
-Current implemented API:
+Current implemented system (Weeks 1–7):
 
 ```text
 GET    /health
@@ -21,9 +21,18 @@ POST   /incidents
 GET    /incidents
 GET    /incidents/{incident_id}
 PATCH  /incidents/{incident_id}
+POST   /incidents/{incident_id}/classify
+POST   /incidents/{incident_id}/diagnose
+POST   /workflows/{run_id}/resume
+POST   /workflows/{run_id}/approve
+POST   /workflows/{run_id}/retry
 ```
 
-The current persistence is deliberately in memory. PostgreSQL, Docker and Hugging Face are separate milestones; they are not presented as already implemented.
+The feature branch now includes PostgreSQL persistence and migrations, CPU and
+Jetson Docker deployments, pinned local Hugging Face inference, confidence-gated
+tools, audit records, durable workflow checkpoints, human approval, concurrency
+locks, idempotency and retryable failure recovery. Authentication/RBAC, evals,
+AWS and production observability remain planned work.
 
 ## Roadmap
 
@@ -41,6 +50,11 @@ The current persistence is deliberately in memory. PostgreSQL, Docker and Huggin
 | 10 | AWS deployment | Active applications |
 | 11 | CI/CD and observability | System-design practice |
 | 12 | Interview release | Interviews and follow-ups |
+
+**Current engineering status:** Weeks 1–7 are implemented and verified on the
+feature branch. Week 8 (authentication, RBAC and enterprise controls) is next.
+Career outputs are tracked separately and are only complete when the owner has
+actually produced them.
 
 See [ROADMAP.md](ROADMAP.md) and [docs/month-01.md](docs/month-01.md).
 

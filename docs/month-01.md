@@ -4,6 +4,9 @@
 
 Build and understand the first production layers of `projects/enterprise-ai-platform` without repeating environment setup.
 
+**Status:** the four engineering milestones below are implemented. This file is
+the Month 1 learning record, not a list of future claims.
+
 ```text
 Week 1  domain and service logic
 Week 2  FastAPI and API tests
@@ -36,13 +39,16 @@ Done when create/list/fetch/update, 404s and invalid transitions are tested and 
 
 Add SQLAlchemy models and a PostgreSQL repository, Alembic migration, constraints, sessions/transactions, pagination and database integration tests. Do not add Docker or a model in the same milestone.
 
-Done when migrations build a clean schema and the API passes its contract tests against PostgreSQL.
+Completed: migrations build a clean schema and the repository/API integration
+tests run against PostgreSQL.
 
 ## Week 4 — Docker
 
 Add a non-root image, Compose for API + PostgreSQL, environment configuration, health checks and verified clean-start commands. Do not add Hugging Face yet.
 
-Done when a new clone starts predictably, migrations run, API health/readiness pass and tests remain green.
+Completed: Compose starts API and PostgreSQL, migrations run automatically, the
+container runs as a non-root user, readiness passes and database/model volumes
+persist across restarts.
 
 ## Career Outputs This Month
 
