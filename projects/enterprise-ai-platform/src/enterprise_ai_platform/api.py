@@ -4,6 +4,7 @@ from uuid import UUID
 
 from fastapi import Depends, FastAPI, Query, Request, status
 from fastapi.responses import JSONResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field
 
 from .auth import (
@@ -11,6 +12,7 @@ from .auth import (
     AuthenticationNotConfiguredError,
     AuthenticationService,
     InvalidCredentialsError,
+    InvalidAccessTokenError,
     JWTTokenService,
     PasswordHasher,
     RegistrationService,
@@ -167,6 +169,7 @@ def create_app(
     token_service: JWTTokenService | None = None,
 ) -> FastAPI:
     app = FastAPI(title="Enterprise AI Platform", version="0.1.0")
+    bearer = HTTPBearer(auto_error=False)
     if service is not None:
         app.state.incident_service = service
         prediction_repository = InMemoryPredictionRepository()
@@ -259,6 +262,16 @@ def create_app(
             )
         return authentication
 
+    def get_current_user(
+        credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
+        authentication: AuthenticationService = Depends(
+            get_authentication_service
+        ),
+    ) -> User:
+        if credentials is None or credentials.scheme.lower() != "bearer":
+            raise InvalidAccessTokenError("invalid access token")
+        return authentication.current_user(credentials.credentials)
+
     @app.exception_handler(AuthenticationNotConfiguredError)
     async def handle_authentication_not_configured(
         _request: Request, error: AuthenticationNotConfiguredError
@@ -275,6 +288,16 @@ def create_app(
         return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
             content={"detail": "invalid email or password"},
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    @app.exception_handler(InvalidAccessTokenError)
+    async def handle_invalid_access_token(
+        _request: Request, _error: InvalidAccessTokenError
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={"detail": "invalid access token"},
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -381,6 +404,12 @@ def create_app(
             "token_type": token.token_type,
             "expires_in": token.expires_in,
         }
+
+    @app.get("/auth/me", response_model=UserResponse)
+    def read_current_user(
+        user: User = Depends(get_current_user),
+    ) -> User:
+        return user
 
     @app.get("/ready", response_model=None)
     def ready(

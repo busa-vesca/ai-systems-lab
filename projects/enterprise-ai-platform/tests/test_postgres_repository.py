@@ -75,6 +75,7 @@ def test_postgres_repository_persists_and_finds_user() -> None:
         repository = PostgreSQLUserRepository(session_factory)
         repository.add(user)
 
+        assert repository.get(user.id) == user
         assert repository.get_by_email(" operator@EXAMPLE.COM ") == user
         with pytest.raises(UserAlreadyExistsError):
             repository.add(

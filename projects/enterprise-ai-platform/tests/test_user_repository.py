@@ -18,6 +18,7 @@ def test_in_memory_user_repository_normalizes_lookup() -> None:
 
     repository.add(user)
 
+    assert repository.get(user.id) == user
     assert repository.get_by_email(" Operator@Example.COM ") == user
 
 

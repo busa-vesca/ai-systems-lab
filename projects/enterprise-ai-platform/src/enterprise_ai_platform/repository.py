@@ -33,6 +33,8 @@ class IncidentRepository(Protocol):
 class UserRepository(Protocol):
     def add(self, user: User) -> None: ...
 
+    def get(self, user_id: UUID) -> User | None: ...
+
     def get_by_email(self, email: str) -> User | None: ...
 
 
@@ -88,6 +90,7 @@ class InMemoryIncidentRepository:
 
 class InMemoryUserRepository:
     def __init__(self) -> None:
+        self._users: dict[UUID, User] = {}
         self._users_by_email: dict[str, User] = {}
         self._lock = Lock()
 
@@ -97,7 +100,12 @@ class InMemoryUserRepository:
                 raise UserAlreadyExistsError(
                     f"user already exists: {user.email}"
                 )
+            self._users[user.id] = user
             self._users_by_email[user.email] = user
+
+    def get(self, user_id: UUID) -> User | None:
+        with self._lock:
+            return self._users.get(user_id)
 
     def get_by_email(self, email: str) -> User | None:
         normalized_email = email.strip().lower()

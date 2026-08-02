@@ -257,6 +257,58 @@ def test_login_without_jwt_secret_returns_controlled_503() -> None:
     assert response.json() == {"detail": "JWT authentication is not configured"}
 
 
+def test_bearer_token_returns_current_database_user() -> None:
+    users = InMemoryUserRepository()
+    tokens = JWTTokenService(secret="test-secret-that-is-at-least-32-characters")
+    client = TestClient(
+        create_app(
+            IncidentService(),
+            user_repository=users,
+            token_service=tokens,
+        )
+    )
+    credentials = {
+        "email": "viewer@example.com",
+        "password": "correct-horse-battery-staple",
+    }
+    client.post("/auth/register", json=credentials)
+    token = client.post("/auth/login", json=credentials).json()[
+        "access_token"
+    ]
+
+    response = client.get(
+        "/auth/me",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["email"] == "viewer@example.com"
+    assert response.json()["role"] == "viewer"
+    assert "password_hash" not in response.json()
+
+
+def test_missing_or_tampered_bearer_token_returns_401() -> None:
+    users = InMemoryUserRepository()
+    tokens = JWTTokenService(secret="test-secret-that-is-at-least-32-characters")
+    client = TestClient(
+        create_app(
+            IncidentService(),
+            user_repository=users,
+            token_service=tokens,
+        )
+    )
+
+    missing = client.get("/auth/me")
+    tampered = client.get(
+        "/auth/me",
+        headers={"Authorization": "Bearer invalid.token.value"},
+    )
+
+    assert missing.status_code == 401
+    assert tampered.status_code == 401
+    assert tampered.json() == {"detail": "invalid access token"}
+
+
 def test_incident_lifecycle() -> None:
     client = make_client()
     created = client.post(

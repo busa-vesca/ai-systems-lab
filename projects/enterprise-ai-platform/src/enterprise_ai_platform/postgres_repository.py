@@ -88,6 +88,11 @@ class PostgreSQLUserRepository:
             )
             return _user_to_domain(record) if record is not None else None
 
+    def get(self, user_id: UUID) -> User | None:
+        with session_scope(self._session_factory) as session:
+            record = session.get(UserRecord, user_id)
+            return _user_to_domain(record) if record is not None else None
+
 
 def _prediction_to_domain(record: ModelPredictionRecord) -> ModelPrediction:
     return ModelPrediction(

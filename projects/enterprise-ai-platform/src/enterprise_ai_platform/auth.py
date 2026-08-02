@@ -1,6 +1,7 @@
 import os
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from uuid import UUID
 
 import jwt
 from pwdlib import PasswordHash
@@ -23,6 +24,10 @@ class InvalidCredentialsError(Exception):
 
 class AuthenticationNotConfiguredError(Exception):
     """JWT authentication is unavailable until a secret is configured."""
+
+
+class InvalidAccessTokenError(Exception):
+    """A bearer token cannot identify an active user."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,3 +147,15 @@ class AuthenticationService:
         ):
             raise InvalidCredentialsError("invalid email or password")
         return self._tokens.issue(user)
+
+    def current_user(self, token: str) -> User:
+        try:
+            claims = self._tokens.decode(token)
+            user_id = UUID(str(claims["sub"]))
+        except (jwt.InvalidTokenError, KeyError, TypeError, ValueError) as error:
+            raise InvalidAccessTokenError("invalid access token") from error
+
+        user = self._users.get(user_id)
+        if user is None or not user.is_active:
+            raise InvalidAccessTokenError("invalid access token")
+        return user
