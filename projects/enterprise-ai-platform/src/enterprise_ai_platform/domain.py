@@ -10,6 +10,12 @@ class IncidentStatus(StrEnum):
     RESOLVED = "resolved"
 
 
+class UserRole(StrEnum):
+    VIEWER = "viewer"
+    OPERATOR = "operator"
+    APPROVER = "approver"
+
+
 ALLOWED_TRANSITIONS: dict[IncidentStatus, set[IncidentStatus]] = {
     IncidentStatus.OPEN: {IncidentStatus.INVESTIGATING},
     IncidentStatus.INVESTIGATING: {IncidentStatus.OPEN, IncidentStatus.RESOLVED},
@@ -31,6 +37,38 @@ class InvalidStatusTransitionError(IncidentError):
 
 class ModelInferenceError(IncidentError):
     """The model could not produce a usable prediction."""
+
+
+@dataclass(frozen=True, slots=True)
+class User:
+    id: UUID
+    email: str
+    password_hash: str
+    role: UserRole
+    is_active: bool
+    created_at: datetime
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        email: str,
+        password_hash: str,
+        role: UserRole = UserRole.VIEWER,
+    ) -> "User":
+        normalized_email = email.strip().lower()
+        if "@" not in normalized_email:
+            raise ValueError("email must be valid")
+        if not password_hash.strip():
+            raise ValueError("password hash must not be empty")
+        return cls(
+            id=uuid4(),
+            email=normalized_email,
+            password_hash=password_hash,
+            role=role,
+            is_active=True,
+            created_at=datetime.now(UTC),
+        )
 
 
 @dataclass(frozen=True, slots=True)

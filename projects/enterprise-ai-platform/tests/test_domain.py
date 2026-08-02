@@ -6,6 +6,8 @@ from enterprise_ai_platform.domain import (
     IncidentStatus,
     InvalidStatusTransitionError,
     ModelPrediction,
+    User,
+    UserRole,
 )
 
 
@@ -41,3 +43,20 @@ def test_prediction_rejects_invalid_score() -> None:
             model_revision="test",
             latency_ms=10,
         )
+
+
+def test_user_is_created_with_normalized_email_and_role() -> None:
+    user = User.create(
+        email="  Operator@Example.COM ",
+        password_hash="test-password-hash",
+        role=UserRole.OPERATOR,
+    )
+
+    assert user.email == "operator@example.com"
+    assert user.role is UserRole.OPERATOR
+    assert user.is_active is True
+
+
+def test_user_rejects_empty_password_hash() -> None:
+    with pytest.raises(ValueError, match="password hash must not be empty"):
+        User.create(email="viewer@example.com", password_hash="  ")

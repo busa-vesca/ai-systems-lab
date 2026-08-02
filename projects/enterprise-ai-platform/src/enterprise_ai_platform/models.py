@@ -19,6 +19,30 @@ from sqlalchemy.orm import Mapped, mapped_column
 from .database import Base
 
 
+class UserRecord(Base):
+    __tablename__ = "users"
+    __table_args__ = (
+        CheckConstraint(
+            "role IN ('viewer', 'operator', 'approver')",
+            name="ck_users_role",
+        ),
+        UniqueConstraint("email", name="uq_users_email"),
+    )
+
+    id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True), primary_key=True
+    )
+    email: Mapped[str] = mapped_column(String(320), nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+
+
 class IncidentRecord(Base):
     __tablename__ = "incidents"
     __table_args__ = (
