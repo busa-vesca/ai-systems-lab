@@ -6,6 +6,17 @@ Begin targeted applications in Week 6, active applications and interviews from W
 
 The roadmap extends one central project: `projects/enterprise-ai-platform`. Existing ML, CV and edge labs are supporting evidence, not prerequisites to repeat.
 
+## Current Status
+
+- Weeks 1–7: implemented on `feat/incident-domain-foundation`
+- Week 8: next engineering milestone
+- Career track: started early by design, but applications and mock interviews
+  must be confirmed by the owner rather than inferred from repository code
+
+The implemented workflow is deterministic and safety-gated: model output is a
+prediction, not authorization. A policy checks confidence and tool metadata
+before any allowlisted action can run.
+
 ## Working Rules
 
 1. Use the existing `lab-pt` environment. Never recreate a venv as a lesson.
@@ -43,6 +54,10 @@ Add structured tool schemas, validation, allowlists, retries, timeouts and persi
 ### Week 7 — Stateful Agent Workflow
 
 Add explicit workflow state, checkpoints, resumability, human approval and recovery from tool/model failures. Run the first technical mock interview.
+
+Engineering milestone complete: versioned PostgreSQL checkpoints, restart-safe
+resume, approval, advisory locks, idempotency keys and linked retry runs are
+implemented. The mock interview remains a separate owner-confirmed career task.
 
 ### Week 8 — Enterprise Integration
 
